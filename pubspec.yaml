@@ -1,10 +1,10 @@
-name: YatharthEMS_Apps
+name: yatharthems_apps
 description: "A new Flutter project."
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.12.2
+  sdk: ^3.11.0
 
 dependencies:
   flutter:

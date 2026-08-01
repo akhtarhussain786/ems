@@ -8,7 +8,59 @@ import '../utils/constants.dart';
 import 'salary_report_screen.dart';
 import 'attendance_report_screen.dart';
 import 'home_screen.dart';
+import 'daily_attendance_report_screen.dart';
+import 'monthly_attendance_report_screen.dart';
+import 'late_attendance_report_screen.dart';
 
+// ==================== REPORT SCREENS ====================
+
+class AbsentReportScreen extends StatelessWidget {
+  const AbsentReportScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F4F8),
+      appBar: AppBar(
+        title: const Text('Absent Report'),
+        backgroundColor: const Color(0xFF1E3A5F),
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.cancel_rounded, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'Absent Report',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Absent attendance records',
+              style: TextStyle(color: Colors.grey[500]),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3A5F),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Go Back'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 class SettingsScreen extends StatefulWidget {
   final Map<String, dynamic>? userData;
   final String? profileImagePath;
@@ -1093,8 +1145,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: 'Daily Report',
                     subtitle: "Today's attendance summary",
                     iconColor: Colors.blue,
-                    onTap: () => _navigateToReport(
-                        const AttendanceReportScreen(type: ReportType.daily)),
+                    onTap: () => _navigateToReport(const DailyAttendanceReportScreen()),
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildMenuItem(
@@ -1102,8 +1153,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: 'Monthly Report',
                     subtitle: "This month's attendance summary",
                     iconColor: Colors.purple,
-                    onTap: () => _navigateToReport(
-                        const AttendanceReportScreen(type: ReportType.monthly)),
+                    onTap: () => _navigateToReport(const MonthlyAttendanceReportScreen()),
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildMenuItem(
@@ -1111,8 +1161,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: 'Late Report',
                     subtitle: 'Late attendance records',
                     iconColor: Colors.orange,
-                    onTap: () => _navigateToReport(
-                        const AttendanceReportScreen(type: ReportType.late)),
+                    onTap: () => _navigateToReport(const LateAttendanceReportScreen()),
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildMenuItem(
