@@ -1,206 +1,27 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
+import '../utils/constants.dart';
 import 'salary_report_screen.dart';
+import 'attendance_report_screen.dart';
 import 'home_screen.dart';
 
-// ==================== REPORT SCREENS ====================
-
-class DailyReportScreen extends StatelessWidget {
-  const DailyReportScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
-      appBar: AppBar(
-        title: const Text('Daily Report'),
-        backgroundColor: const Color(0xFF1E3A5F),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.calendar_today_rounded, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Daily Report',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Today\'s attendance summary',
-              style: TextStyle(color: Colors.grey[500]),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A5F),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Go Back'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class MonthlyReportScreen extends StatelessWidget {
-  const MonthlyReportScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
-      appBar: AppBar(
-        title: const Text('Monthly Report'),
-        backgroundColor: const Color(0xFF1E3A5F),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.calendar_month_rounded, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Monthly Report',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'This month\'s attendance summary',
-              style: TextStyle(color: Colors.grey[500]),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A5F),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Go Back'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class LateReportScreen extends StatelessWidget {
-  const LateReportScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
-      appBar: AppBar(
-        title: const Text('Late Report'),
-        backgroundColor: const Color(0xFF1E3A5F),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.warning_amber_rounded, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Late Report',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Late attendance records',
-              style: TextStyle(color: Colors.grey[500]),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A5F),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Go Back'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class AbsentReportScreen extends StatelessWidget {
-  const AbsentReportScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
-      appBar: AppBar(
-        title: const Text('Absent Report'),
-        backgroundColor: const Color(0xFF1E3A5F),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.cancel_rounded, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Absent Report',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Absent attendance records',
-              style: TextStyle(color: Colors.grey[500]),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A5F),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Go Back'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final Map<String, dynamic>? userData;
+  final String? profileImagePath;
+  final Function(String)? onImageUpdated;
+  final VoidCallback? onDataChanged;
+
+  const SettingsScreen({
+    super.key,
+    this.userData,
+    this.profileImagePath,
+    this.onImageUpdated,
+    this.onDataChanged,
+  });
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -211,6 +32,264 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _darkMode = false;
   bool _autoSync = true;
   String _selectedLanguage = 'English';
+  final ImagePicker _picker = ImagePicker();
+
+  void _showSnack(String msg, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: error ? Colors.red : Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _editProfile() async {
+    final data = widget.userData ?? {};
+    final mobileCtrl =
+        TextEditingController(text: (data['mobile'] ?? '').toString());
+    final addressCtrl =
+        TextEditingController(text: (data['address'] ?? '').toString());
+    final cityCtrl =
+        TextEditingController(text: (data['city'] ?? '').toString());
+    final stateCtrl =
+        TextEditingController(text: (data['state'] ?? '').toString());
+    final pincodeCtrl =
+        TextEditingController(text: (data['pincode'] ?? '').toString());
+
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Profile'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: mobileCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Mobile',
+                  prefixIcon: Icon(Icons.phone_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: addressCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Address',
+                  prefixIcon: Icon(Icons.home_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: cityCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'City',
+                        prefixIcon: Icon(Icons.location_city_rounded),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: stateCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'State',
+                        prefixIcon: Icon(Icons.map_rounded),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: pincodeCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Pincode',
+                  prefixIcon: Icon(Icons.markunread_mailbox_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E3A5F),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldSave != true || !mounted) return;
+
+    try {
+      final res = await ApiService().updateProfile({
+        'mobile': mobileCtrl.text.trim(),
+        'address': addressCtrl.text.trim(),
+        'city': cityCtrl.text.trim(),
+        'state': stateCtrl.text.trim(),
+        'pincode': pincodeCtrl.text.trim(),
+      });
+      if (mounted) {
+        if (res['success'] == true) {
+          _showSnack(res['message'] ?? 'Profile updated successfully');
+          widget.onDataChanged?.call();
+        } else {
+          _showSnack(res['message'] ?? 'Failed to update profile',
+              error: true);
+        }
+      }
+    } catch (e) {
+      if (mounted) _showSnack('Error: $e', error: true);
+    }
+  }
+
+  Future<void> _changePhoto() async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 500,
+        maxHeight: 500,
+        imageQuality: 80,
+      );
+      if (image == null) return;
+
+      final file = File(image.path);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('profile_image_path', image.path);
+      widget.onImageUpdated?.call(image.path);
+
+      if (mounted) {
+        _showSnack('Photo updated locally. Uploading...');
+      }
+
+      try {
+        final res = await ApiService().updateProfilePhoto(file);
+        if (mounted) {
+          if (res['success'] == true) {
+            _showSnack(res['message'] ?? 'Profile photo uploaded successfully');
+            widget.onDataChanged?.call();
+          } else {
+            _showSnack(res['message'] ?? 'Photo upload failed', error: true);
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          _showSnack('Photo saved locally, upload failed', error: true);
+        }
+      }
+    } catch (e) {
+      if (mounted) _showSnack('Error: $e', error: true);
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final currentCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+
+    final shouldChange = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Change Password'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: currentCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Current Password',
+                  prefixIcon: Icon(Icons.lock_outline_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: newCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'New Password',
+                  prefixIcon: Icon(Icons.lock_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm New Password',
+                  prefixIcon: Icon(Icons.verified_user_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E3A5F),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Change Password'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldChange != true || !mounted) return;
+
+    if (newCtrl.text.length < 6) {
+      _showSnack('New password must be at least 6 characters', error: true);
+      return;
+    }
+    if (newCtrl.text != confirmCtrl.text) {
+      _showSnack('Passwords do not match', error: true);
+      return;
+    }
+
+    try {
+      final res = await ApiService()
+          .changePassword(currentCtrl.text, newCtrl.text);
+      if (mounted) {
+        if (res['success'] == true) {
+          _showSnack(res['message'] ?? 'Password changed successfully');
+        } else {
+          _showSnack(res['message'] ?? 'Failed to change password',
+              error: true);
+        }
+      }
+    } catch (e) {
+      if (mounted) _showSnack('Error: $e', error: true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -245,21 +324,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.person_rounded,
                   title: 'Edit Profile',
                   subtitle: 'Update your profile information',
-                  onTap: () {},
+                  onTap: _editProfile,
                 ),
                 const Divider(height: 1, indent: 16),
                 _buildSettingsTile(
                   icon: Icons.photo_camera_rounded,
                   title: 'Change Photo',
                   subtitle: 'Update your profile picture',
-                  onTap: () {},
+                  onTap: _changePhoto,
                 ),
                 const Divider(height: 1, indent: 16),
                 _buildSettingsTile(
                   icon: Icons.lock_rounded,
                   title: 'Change Password',
                   subtitle: 'Update your password',
-                  onTap: () {},
+                  onTap: _changePassword,
                 ),
               ],
             ),
@@ -617,13 +696,52 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   String? _profileImagePath;
+  late Map<String, dynamic> _userData;
   final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
+    _userData = widget.userData ?? {};
     _profileImagePath = widget.profileImagePath;
     _loadProfileImage();
+  }
+
+  Future<void> _refreshProfile() async {
+    try {
+      final res = await ApiService().getProfile();
+      if (!mounted || res['success'] != true) return;
+      final emp = res['data']?['employee'];
+      if (emp is Map<String, dynamic>) {
+        final merged = Map<String, dynamic>.from(_userData);
+        final fullName =
+            '${emp['first_name'] ?? ''} ${emp['last_name'] ?? ''}'.trim();
+        if (fullName.isNotEmpty) merged['name'] = fullName;
+        merged['employee_code'] = emp['employee_code'] ?? merged['employee_code'];
+        merged['mobile'] = emp['mobile'] ?? merged['mobile'];
+        merged['email'] = emp['email'] ?? merged['email'];
+        merged['address'] = emp['address'] ?? '';
+        merged['city'] = emp['city'] ?? '';
+        merged['state'] = emp['state'] ?? '';
+        merged['pincode'] = emp['pincode'] ?? '';
+        merged['department_name'] =
+            emp['department_name'] ?? merged['department_name'];
+        merged['designation_name'] =
+            emp['designation_name'] ?? merged['designation_name'];
+        if (emp['profile_photo'] != null &&
+            emp['profile_photo'].toString().isNotEmpty) {
+          final photo = emp['profile_photo'].toString();
+          merged['profile_photo'] = photo.startsWith('http')
+              ? photo
+              : '${AppConstants.baseUrl}/$photo';
+        }
+        setState(() => _userData = merged);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(AppConstants.userKey, jsonEncode(merged));
+      }
+    } catch (e) {
+      print('Error refreshing profile: $e');
+    }
   }
 
   Future<void> _loadProfileImage() async {
@@ -731,13 +849,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final name = widget.userData?['name'] ?? 'Employee';
-    final code = widget.userData?['employee_code'] ?? 'EMP001';
-    final mobile = widget.userData?['mobile'] ?? 'N/A';
-    final email = widget.userData?['email'] ?? 'N/A';
-    final role = widget.userData?['role_name'] ?? widget.userData?['role'] ?? 'Employee';
-    final department = widget.userData?['department_name'] ?? 'N/A';
-    final designation = widget.userData?['designation_name'] ?? 'N/A';
+    final name = _userData['name'] ?? 'Employee';
+    final code = _userData['employee_code'] ?? 'EMP001';
+    final mobile = _userData['mobile'] ?? 'N/A';
+    final email = _userData['email'] ?? 'N/A';
+    final role = _userData['role_name'] ?? _userData['role'] ?? 'Employee';
+    final department = _userData['department_name'] ?? 'N/A';
+    final designation = _userData['designation_name'] ?? 'N/A';
 
     File? profileImage;
     if (_profileImagePath != null && _profileImagePath!.isNotEmpty) {
@@ -746,6 +864,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         profileImage = file;
       }
     }
+    final serverPhotoUrl = (_userData['profile_photo'] as String?) ?? '';
 
     return PopScope(
       canPop: false,
@@ -830,9 +949,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               image: FileImage(profileImage!),
                               fit: BoxFit.cover,
                             )
-                                : null,
+                                : serverPhotoUrl.isNotEmpty
+                                    ? DecorationImage(
+                                  image: NetworkImage(serverPhotoUrl),
+                                  fit: BoxFit.cover,
+                                  onError: (_, __) {},
+                                )
+                                    : null,
                           ),
-                          child: profileImage == null
+                          child: (profileImage == null && serverPhotoUrl.isEmpty)
                               ? CircleAvatar(
                             radius: 50,
                             backgroundColor: Colors.white.withOpacity(0.9),
@@ -968,7 +1093,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: 'Daily Report',
                     subtitle: "Today's attendance summary",
                     iconColor: Colors.blue,
-                    onTap: () => _navigateToReport(const DailyReportScreen()),
+                    onTap: () => _navigateToReport(
+                        const AttendanceReportScreen(type: ReportType.daily)),
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildMenuItem(
@@ -976,7 +1102,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: 'Monthly Report',
                     subtitle: "This month's attendance summary",
                     iconColor: Colors.purple,
-                    onTap: () => _navigateToReport(const MonthlyReportScreen()),
+                    onTap: () => _navigateToReport(
+                        const AttendanceReportScreen(type: ReportType.monthly)),
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildMenuItem(
@@ -984,7 +1111,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: 'Late Report',
                     subtitle: 'Late attendance records',
                     iconColor: Colors.orange,
-                    onTap: () => _navigateToReport(const LateReportScreen()),
+                    onTap: () => _navigateToReport(
+                        const AttendanceReportScreen(type: ReportType.late)),
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildMenuItem(
@@ -992,7 +1120,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: 'Absent Report',
                     subtitle: 'Absent attendance records',
                     iconColor: Colors.red,
-                    onTap: () => _navigateToReport(const AbsentReportScreen()),
+                    onTap: () => _navigateToReport(
+                        const AttendanceReportScreen(type: ReportType.absent)),
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildMenuItem(
@@ -1009,7 +1138,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     subtitle: 'App settings & preferences',
                     iconColor: Colors.grey,
                     showTrailing: true,
-                    onTap: () => _navigateToReport(const SettingsScreen()),
+                    onTap: () => _navigateToReport(SettingsScreen(
+                      userData: _userData,
+                      profileImagePath: _profileImagePath,
+                      onImageUpdated: widget.onImageUpdated,
+                      onDataChanged: _refreshProfile,
+                    )),
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildMenuItem(

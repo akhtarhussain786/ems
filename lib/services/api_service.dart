@@ -323,15 +323,15 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getMonthlyAttendance(String month) async {
-    return get('attendance/calendar/$month');
+    return get('attendance/monthly/$month');
   }
 
   Future<Map<String, dynamic>> getLateAttendance(String month) async {
-    return get('attendance/summary/$month');
+    return get('attendance/late/$month');
   }
 
   Future<Map<String, dynamic>> getAbsentAttendance(String month) async {
-    return get('attendance/summary/$month');
+    return get('attendance/absent/$month');
   }
 
   // ============================================================
@@ -343,6 +343,22 @@ class ApiService {
 
   Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async {
     return post('employee/update', data);
+  }
+
+  Future<Map<String, dynamic>> updateProfilePhoto(
+    File file, {
+    Map<String, String> fields = const {},
+  }) async {
+    return postMultipart('employee/update', fields, file,
+        fileField: 'profile_photo');
+  }
+
+  Future<Map<String, dynamic>> changePassword(
+      String currentPassword, String newPassword) async {
+    return post('employee/change_password', {
+      'current_password': currentPassword,
+      'new_password': newPassword,
+    });
   }
 
   // ============================================================
