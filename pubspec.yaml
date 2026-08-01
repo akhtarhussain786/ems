@@ -1,0 +1,73 @@
+name: YatharthEMS_Apps
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.0
+  shared_preferences: ^2.3.0
+  geolocator: ^13.0.0
+  camera: ^0.11.0
+  permission_handler: ^11.3.0
+  intl: ^0.19.0
+  image_picker: ^1.1.0
+  path_provider: ^2.1.0
+  flutter_image_compress: ^2.3.0
+  connectivity_plus: ^6.0.3
+  google_fonts: ^6.3.2
+  flutter_native_splash: ^2.4.0
+  url_launcher: ^6.3.0
+  pdf: ^3.10.4
+
+
+
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/logo.png
+    - assets/images/logo25.png
+
+# ✅ App Icon Configuration
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/logo.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/images/logo2.png"
+    background_color: "#1E3A5F"
+    theme_color: "#1E3A5F"
+  windows:
+    generate: true
+    image_path: "assets/images/logo.png"
+    icon_size: 48
+  macos:
+    generate: true
+    image_path: "assets/images/logo.png"
+
+# ✅ Native Splash Configuration - CORRECTED (no extra indentation)
+flutter_native_splash:
+  color: "#1E3A5F"
+  image: assets/images/logo.png
+  android: true
+  ios: true
+  android_gravity: center
+  android_screen_orientation: portrait
+  ios_content_mode: center
+  color_dark: "#1E3A5F"
+  image_dark: assets/images/logo.png
