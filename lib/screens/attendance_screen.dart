@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../services/api_service.dart';
+import '../utils/constants.dart';
 import '../utils/helpers.dart';
 import 'home_screen.dart';
 
@@ -143,8 +145,28 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
 
   Future<void> _checkLocation() async {
     try {
+      // Field staff (e.g. Digital Marketing) can check in from anywhere
+      final prefs = await SharedPreferences.getInstance();
+      final userJson = prefs.getString(AppConstants.userKey);
+      bool isFieldStaff = false;
+      if (userJson != null) {
+        try {
+          final u = jsonDecode(userJson);
+          isFieldStaff = (u['is_field_staff'] ?? 0) == 1;
+        } catch (_) {}
+      }
+
       final res = await ApiService().getOfficeSettings();
       if (!mounted) return;
+
+      if (isFieldStaff) {
+        setState(() {
+          _withinRange = true;
+          _distance = 0;
+          _locationLoading = false;
+        });
+        return;
+      }
 
       if (res['success'] == true) {
         final office = res['data']?['office'];

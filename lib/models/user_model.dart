@@ -10,6 +10,7 @@ class UserModel {
   final String? email;
   final String role;
   final String? token;
+  final bool isFieldStaff;
 
   UserModel({
     this.id,
@@ -23,6 +24,7 @@ class UserModel {
     this.email,
     this.role = 'Employee',
     this.token,
+    this.isFieldStaff = false,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -37,6 +39,7 @@ class UserModel {
       mobile: json['mobile'],
       email: json['email'],
       role: json['role'] ?? 'Employee',
+      isFieldStaff: (json['is_field_staff'] ?? 0) == 1,
     );
   }
 
@@ -51,5 +54,6 @@ class UserModel {
     'mobile': mobile,
     'email': email,
     'role': role,
+    'is_field_staff': isFieldStaff ? 1 : 0,
   };
 }
