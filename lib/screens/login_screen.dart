@@ -14,7 +14,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   final _employeeIdController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _remember = false;
@@ -23,32 +23,97 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Auto-logout timer
   Timer? _autoLogoutTimer;
-  static const Duration _autoLogoutDuration = Duration(hours: 12);
+  Timer? _sessionCheckTimer;
+  static const Duration _autoLogoutDuration = Duration(minutes: 5);
+  static const Duration _sessionCheckInterval = Duration(minutes: 1);
+
+  // Track last interaction time
+  DateTime? _lastInteractionTime;
+  bool _isSessionExpired = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSavedCredentials();
     _checkAndHandleAutoLogout();
+    _startSessionCheckTimer();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _employeeIdController.dispose();
     _passwordController.dispose();
     _autoLogoutTimer?.cancel();
+    _sessionCheckTimer?.cancel();
     super.dispose();
   }
 
-  // Check if user was auto-logged out and show message
+  // ✅ Lifecycle management - handle app background/foreground
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkSessionOnResume();
+    }
+  }
+
+  // ✅ Check session when app resumes
+  Future<void> _checkSessionOnResume() async {
+    final prefs = await SharedPreferences.getInstance();
+    final loginTimestamp = prefs.getString('login_timestamp');
+
+    if (loginTimestamp != null) {
+      final loginTime = DateTime.parse(loginTimestamp);
+      final currentTime = DateTime.now();
+      final difference = currentTime.difference(loginTime);
+
+      if (difference >= _autoLogoutDuration) {
+        await _performAutoLogout();
+        return;
+      }
+
+      // Reset timer with remaining time
+      final remainingTime = _autoLogoutDuration - difference;
+      _startAutoLogoutTimer(remainingTime);
+    }
+  }
+
+  // ✅ Check if user was auto-logged out and show message
   void _checkAndHandleAutoLogout() async {
     final prefs = await SharedPreferences.getInstance();
     final wasAutoLogout = prefs.getBool('was_auto_logout') ?? false;
+    final logoutReason = prefs.getString('logout_reason') ?? 'Session expired';
 
     if (wasAutoLogout) {
       await prefs.remove('was_auto_logout');
+      await prefs.remove('logout_reason');
       if (mounted) {
-        _showInfo('🔐 Session expired. Please login again for security.');
+        _showInfo('🔐 $logoutReason. Please login again for security.');
+      }
+    }
+  }
+
+  // ✅ Periodic session check
+  void _startSessionCheckTimer() {
+    _sessionCheckTimer?.cancel();
+    _sessionCheckTimer = Timer.periodic(_sessionCheckInterval, (timer) async {
+      await _checkSessionStatus();
+    });
+  }
+
+  Future<void> _checkSessionStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final loginTimestamp = prefs.getString('login_timestamp');
+
+    if (loginTimestamp != null) {
+      final loginTime = DateTime.parse(loginTimestamp);
+      final currentTime = DateTime.now();
+      final difference = currentTime.difference(loginTime);
+
+      if (difference >= _autoLogoutDuration && !_isSessionExpired) {
+        _isSessionExpired = true;
+        await _performAutoLogout();
       }
     }
   }
@@ -148,11 +213,17 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         await prefs.setString(AppConstants.userKey, jsonEncode(userData));
+
+        // ✅ Save login timestamp with milliseconds for accuracy
         await prefs.setString('login_timestamp', DateTime.now().toIso8601String());
         await prefs.remove('was_auto_logout');
+        await prefs.remove('logout_reason');
 
-        // ✅ Start auto-logout timer
-        _startAutoLogoutTimer();
+        // ✅ Reset session expired flag
+        _isSessionExpired = false;
+
+        // ✅ Start auto-logout timer with full duration
+        _startAutoLogoutTimer(_autoLogoutDuration);
 
         if (!mounted) return;
 
@@ -178,20 +249,38 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _startAutoLogoutTimer() {
+  // ✅ Start auto-logout timer with configurable duration
+  void _startAutoLogoutTimer([Duration? duration]) {
     _autoLogoutTimer?.cancel();
-    _autoLogoutTimer = Timer(_autoLogoutDuration, () {
+    final timerDuration = duration ?? _autoLogoutDuration;
+
+    _autoLogoutTimer = Timer(timerDuration, () {
       _performAutoLogout();
     });
   }
 
+  // ✅ Enhanced auto-logout with proper cleanup
   Future<void> _performAutoLogout() async {
+    // Prevent multiple logout calls
+    if (_isSessionExpired) return;
+    _isSessionExpired = true;
+
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // ✅ Save logout reason for display
       await prefs.setBool('was_auto_logout', true);
+      await prefs.setString('logout_reason', 'Auto-logged out after 12 hours for security');
+
+      // ✅ Clear all session data
       await ApiService().clearToken();
       await prefs.remove(AppConstants.userKey);
       await prefs.remove('login_timestamp');
+      await prefs.remove('auth_token');
+
+      // ✅ Cancel timers
+      _autoLogoutTimer?.cancel();
+      _sessionCheckTimer?.cancel();
 
       if (mounted) {
         _showInfo('🔐 Auto-logged out after 12 hours for security.');
@@ -201,13 +290,21 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (e) {
-      // Silent error handling
+      // Silent error handling with fallback
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
     }
   }
 
+  // ✅ Refresh timer on user interaction with proper reset
   void _refreshAutoLogoutTimer() {
+    _lastInteractionTime = DateTime.now();
     _autoLogoutTimer?.cancel();
-    _startAutoLogoutTimer();
+    _startAutoLogoutTimer(_autoLogoutDuration);
   }
 
   void _onUserInteraction() {
@@ -332,11 +429,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       child: Column(
                         children: [
-                          // Logo - Size Increased
                           Container(
-
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(90), // Increased from 55
+                              borderRadius: BorderRadius.circular(90),
                               child: Image.asset(
                                 'assets/images/logo25.png',
                                 fit: BoxFit.contain,
@@ -353,7 +448,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     child: const Icon(
                                       Icons.business_center,
                                       color: Colors.white,
-                                      size: 80, // Increased from 50
+                                      size: 80,
                                     ),
                                   );
                                 },
@@ -361,7 +456,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          // Animated gradient bar
                           Container(
                             width: 120,
                             height: 3,
@@ -703,7 +797,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           // ✅ Remember Me & Forgot Password
                           Row(
                             children: [
-                              // Custom checkbox
                               GestureDetector(
                                 onTap: () {
                                   _onUserInteraction();
