@@ -381,109 +381,113 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       child: Scaffold(
         backgroundColor: const Color(0xFFF0F4F8),
         appBar: _buildAppBar(isCheckIn, true),
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Animated Success Icon
-                TweenAnimationBuilder(
-                  tween: Tween<double>(begin: 0, end: 1),
-                  duration: const Duration(milliseconds: 600),
-                  builder: (context, double value, child) {
-                    return Transform.scale(
-                      scale: value,
-                      child: child,
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF1E3A5F).withOpacity(0.1),
-                          const Color(0xFF2A5298).withOpacity(0.05),
+        body: SafeArea(
+          // Keeps content clear of the system navigation bar
+          top: false,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Animated Success Icon
+                  TweenAnimationBuilder(
+                    tween: Tween<double>(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 600),
+                    builder: (context, double value, child) {
+                      return Transform.scale(
+                        scale: value,
+                        child: child,
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFF1E3A5F).withOpacity(0.1),
+                            const Color(0xFF2A5298).withOpacity(0.05),
+                          ],
+                        ),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF1E3A5F).withOpacity(0.3),
+                            blurRadius: 30,
+                            spreadRadius: 5,
+                          ),
                         ],
                       ),
-                      shape: BoxShape.circle,
+                      child: const Icon(
+                        Icons.check_circle_rounded,
+                        color: Color(0xFF1E3A5F),
+                        size: 80,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    _completed ? 'Completed!' : 'Already ${isCheckIn ? "Checked In" : "Checked Out"}',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1E3A5F),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF1E3A5F).withOpacity(0.3),
-                          blurRadius: 30,
-                          spreadRadius: 5,
+                          color: Colors.grey.withOpacity(0.1),
+                          blurRadius: 10,
+                          spreadRadius: 1,
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.check_circle_rounded,
-                      color: Color(0xFF1E3A5F),
-                      size: 80,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  _completed ? 'Completed!' : 'Already ${isCheckIn ? "Checked In" : "Checked Out"}',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E3A5F),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        blurRadius: 10,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        isCheckIn ? Icons.login_rounded : Icons.logout_rounded,
-                        color: const Color(0xFF1E3A5F),
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        Helpers.formatTime((isCheckIn ? checkInTime : checkOutTime)?.toString()) ?? '--:--',
-                        style: const TextStyle(
-                          color: Color(0xFF1E3A5F),
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isCheckIn ? Icons.login_rounded : Icons.logout_rounded,
+                          color: const Color(0xFF1E3A5F),
+                          size: 20,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 32),
-                ElevatedButton.icon(
-                  onPressed: _goBack,
-                  icon: const Icon(Icons.arrow_back_rounded, size: 20),
-                  label: const Text(
-                    'Go Back to Home',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E3A5F),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                        const SizedBox(width: 8),
+                        Text(
+                          Helpers.formatTime((isCheckIn ? checkInTime : checkOutTime)?.toString()) ?? '--:--',
+                          style: const TextStyle(
+                            color: Color(0xFF1E3A5F),
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
-                    elevation: 4,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 32),
+                  ElevatedButton.icon(
+                    onPressed: _goBack,
+                    icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                    label: const Text(
+                      'Go Back to Home',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E3A5F),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 4,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -503,23 +507,27 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       child: Scaffold(
         backgroundColor: const Color(0xFFF0F4F8),
         appBar: _buildAppBar(isCheckIn, false),
-        body: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: FadeTransition(
-            opacity: _animationController,
-            child: Column(
-              children: [
-                _buildHeaderCard(isCheckIn),
-                const SizedBox(height: 16),
-                _buildLocationCard(),
-                const SizedBox(height: 16),
-                _buildPhotoCard(),
-                const SizedBox(height: 24),
-                _buildSubmitButton(isCheckIn),
-                const SizedBox(height: 12),
-                _buildHelpText(),
-              ],
+        body: SafeArea(
+          // Keeps content clear of the system navigation bar
+          top: false,
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            child: FadeTransition(
+              opacity: _animationController,
+              child: Column(
+                children: [
+                  _buildHeaderCard(isCheckIn),
+                  const SizedBox(height: 16),
+                  _buildLocationCard(),
+                  const SizedBox(height: 16),
+                  _buildPhotoCard(),
+                  const SizedBox(height: 24),
+                  _buildSubmitButton(isCheckIn),
+                  const SizedBox(height: 12),
+                  _buildHelpText(),
+                ],
+              ),
             ),
           ),
         ),

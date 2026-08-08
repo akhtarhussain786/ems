@@ -350,27 +350,31 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(isPlaceholder),
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Lead Info Glass Card
-              _buildGlassLeadCard(lead, isPlaceholder, phone),
-              const SizedBox(height: 16),
-
-              if (!isPlaceholder) ...[
-                // Log Call Section
-                _buildGlassLogCallCard(),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Lead Info Glass Card
+                _buildGlassLeadCard(lead, isPlaceholder, phone),
                 const SizedBox(height: 16),
-
-                // Activity History
-                _buildGlassHistoryCard(),
+  
+                if (!isPlaceholder) ...[
+                  // Log Call Section
+                  _buildGlassLogCallCard(),
+                  const SizedBox(height: 16),
+  
+                  // Activity History
+                  _buildGlassHistoryCard(),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

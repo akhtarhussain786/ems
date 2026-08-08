@@ -6,9 +6,11 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import '../services/session_manager.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
 import '../utils/dept_nav_helper.dart';
+import '../utils/profile_image.dart';
 import 'login_screen.dart';
 import 'attendance_screen.dart';
 import 'profile_screen.dart';
@@ -85,8 +87,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // The token may have lapsed while the app was in the background
+      if (_handleExpiredSession()) return;
       _refreshAttendanceStatus();
     }
+  }
+
+  /// Ends the session if the token has expired. Returns true when it did, so
+  /// callers can stop whatever they were about to do.
+  bool _handleExpiredSession() {
+    if (!SessionManager.instance.isExpired) return false;
+    _timer?.cancel();
+    _attendanceTimer?.cancel();
+    SessionManager.instance.forceLogout();
+    return true;
   }
 
   void _refreshAttendanceStatus() {
@@ -99,6 +113,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _startTimeUpdate() {
     _updateTime();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      // Catches expiry while the user is sitting on the screen
+      if (_handleExpiredSession()) return;
       _updateTime();
       if (_isTrackingNotifier.value && _checkInTime != null) {
         _updateAttendanceDuration();
@@ -217,6 +233,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _checkAttendanceStatus();
     }
   }
+
+  /// Server copy when the account has one, otherwise the locally picked file.
+  ImageProvider? get _avatarImage => ProfileImage.resolve(
+        serverPhoto: _userData?['profile_photo'],
+        localPath: _profileImagePath,
+      );
 
   Future<void> _loadProfileImage() async {
     final prefs = await SharedPreferences.getInstance();
@@ -344,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
 
     if (shouldLogout == true) {
-      await ApiService().clearToken();
+      await ApiService().logout();
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
@@ -438,33 +460,37 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
         ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.apps_rounded,
-                size: 64,
-                color: Colors.grey[300],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'No modules available',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+        body: SafeArea(
+          // Keeps content clear of the system navigation bar
+          top: false,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.apps_rounded,
+                  size: 64,
+                  color: Colors.grey[300],
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Please contact admin for access',
-                style: TextStyle(
-                  color: Colors.grey[400],
-                  fontSize: 12,
+                const SizedBox(height: 12),
+                Text(
+                  'No modules available',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  'Please contact admin for access',
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -491,16 +517,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
       ),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 0.9,
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 0.9,
+          ),
+          itemCount: _features.length,
+          itemBuilder: (_, i) => _buildPremiumModuleCard(_features[i]),
         ),
-        itemCount: _features.length,
-        itemBuilder: (_, i) => _buildPremiumModuleCard(_features[i]),
       ),
     );
   }
@@ -704,19 +734,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF)],
+        body: SafeArea(
+          // Keeps content clear of the system navigation bar
+          top: false,
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF)],
+              ),
             ),
-          ),
-          child: const Center(
-            child: CircularProgressIndicator(
-              color: Colors.white,
-              strokeWidth: 2.5,
-              strokeCap: StrokeCap.round,
+            child: const Center(
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2.5,
+                strokeCap: StrokeCap.round,
+              ),
             ),
           ),
         ),
@@ -739,12 +773,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: (index) {
-          setState(() => _currentIndex = index);
-        },
-        children: _pages,
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: PageView(
+          controller: _pageController,
+          onPageChanged: (index) {
+            setState(() => _currentIndex = index);
+          },
+          children: _pages,
+        ),
       ),
       bottomNavigationBar: _buildPremiumBottomNav(),
     );
@@ -866,40 +904,44 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
-      body: RefreshIndicator(
-        onRefresh: _fetchDashboard,
-        color: const Color(0xFF1E3A5F),
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: Column(
-              children: [
-                const SizedBox(height: 4),
-                _buildReactiveGreetingCard(),
-                const SizedBox(height: 12),
-                _buildGlassEmployeeCard(employee),
-                const SizedBox(height: 12),
-                _buildAttendanceCardWithNotifier(today),
-                const SizedBox(height: 12),
-                if (stats != null) _buildAnimatedStatsCard(stats),
-                const SizedBox(height: 12),
-                if (_dashboardData?['leave_pending'] != null)
-                  _buildLeaveStatusCard(_dashboardData!),
-                const SizedBox(height: 12),
-                if (_dashboardData?['total_leads'] != null)
-                  _buildRoleStats(_dashboardData!, ['total_leads', 'today_leads', 'monthly_leads', 'converted_leads'], ['Total', 'Today', 'Monthly', 'Won'], [Colors.blue, Colors.orange, Colors.purple, Colors.green]),
-                const SizedBox(height: 12),
-                if (_dashboardData?['assigned_leads'] != null)
-                  _buildRoleStats(_dashboardData!, ['assigned_leads', 'today_calls', 'pending_followups', 'converted_leads'], ['Assigned', "Today's Calls", 'Pending', 'Converted'], [Colors.blue, Colors.orange, Colors.red, Colors.green]),
-                const SizedBox(height: 12),
-                if (_dashboardData?['pending_leaves'] != null)
-                  _buildLeavePendingCard(_dashboardData!['pending_leaves']),
-                const SizedBox(height: 12),
-                _buildModuleChips(),
-                const SizedBox(height: 20),
-              ],
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: RefreshIndicator(
+          onRefresh: _fetchDashboard,
+          color: const Color(0xFF1E3A5F),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: Column(
+                children: [
+                  const SizedBox(height: 4),
+                  _buildReactiveGreetingCard(),
+                  const SizedBox(height: 12),
+                  _buildGlassEmployeeCard(employee),
+                  const SizedBox(height: 12),
+                  _buildAttendanceCardWithNotifier(today),
+                  const SizedBox(height: 12),
+                  if (stats != null) _buildAnimatedStatsCard(stats),
+                  const SizedBox(height: 12),
+                  if (_dashboardData?['leave_pending'] != null)
+                    _buildLeaveStatusCard(_dashboardData!),
+                  const SizedBox(height: 12),
+                  if (_dashboardData?['total_leads'] != null)
+                    _buildRoleStats(_dashboardData!, ['total_leads', 'today_leads', 'monthly_leads', 'converted_leads'], ['Total', 'Today', 'Monthly', 'Won'], [Colors.blue, Colors.orange, Colors.purple, Colors.green]),
+                  const SizedBox(height: 12),
+                  if (_dashboardData?['assigned_leads'] != null)
+                    _buildRoleStats(_dashboardData!, ['assigned_leads', 'today_calls', 'pending_followups', 'converted_leads'], ['Assigned', "Today's Calls", 'Pending', 'Converted'], [Colors.blue, Colors.orange, Colors.red, Colors.green]),
+                  const SizedBox(height: 12),
+                  if (_dashboardData?['pending_leaves'] != null)
+                    _buildLeavePendingCard(_dashboardData!['pending_leaves']),
+                  const SizedBox(height: 12),
+                  _buildModuleChips(),
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           ),
         ),
@@ -1021,14 +1063,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     gradient: const LinearGradient(
                       colors: [Colors.white, Colors.white70],
                     ),
-                    image: _profileImagePath != null
+                    image: _avatarImage != null
                         ? DecorationImage(
-                      image: FileImage(File(_profileImagePath!)),
+                      image: _avatarImage!,
                       fit: BoxFit.cover,
                     )
                         : null,
                   ),
-                  child: _profileImagePath == null
+                  child: _avatarImage == null
                       ? Center(
                     child: Text(
                       _userData?['name']?.isNotEmpty == true
@@ -1477,13 +1519,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final dept = emp?['department_name'] ?? _userData?['department_name'] ?? '';
     final desig = emp?['designation_name'] ?? '';
 
-    File? profileImage;
-    if (_profileImagePath != null && _profileImagePath!.isNotEmpty) {
-      final file = File(_profileImagePath!);
-      if (file.existsSync()) {
-        profileImage = file;
-      }
-    }
+    final profileImage = _avatarImage;
 
     return Container(
       decoration: BoxDecoration(
@@ -1517,7 +1553,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 shape: BoxShape.circle,
                 image: profileImage != null
                     ? DecorationImage(
-                  image: FileImage(profileImage!),
+                  image: profileImage,
                   fit: BoxFit.cover,
                 )
                     : null,

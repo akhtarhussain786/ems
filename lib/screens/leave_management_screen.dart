@@ -79,23 +79,27 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
       floatingActionButton: _buildFAB(),
-      body: _loading
-          ? const Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFF1E3A5F),
-          strokeWidth: 3,
-        ),
-      )
-          : Column(
-        children: [
-          _buildTabRow(),
-          Expanded(
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: _tabIndex == 0 ? _buildLeaveList() : _buildBalance(),
-            ),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: _loading
+            ? const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF1E3A5F),
+            strokeWidth: 3,
           ),
-        ],
+        )
+            : Column(
+          children: [
+            _buildTabRow(),
+            Expanded(
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: _tabIndex == 0 ? _buildLeaveList() : _buildBalance(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -732,7 +736,8 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
 
           return Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
+              bottom: MediaQuery.of(context).viewInsets.bottom +
+                  MediaQuery.of(context).padding.bottom,
               left: 20,
               right: 20,
               top: 20,

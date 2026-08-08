@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/constants.dart';
+import 'session_manager.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -10,35 +10,41 @@ class ApiService {
   ApiService._internal();
 
   final http.Client _client = http.Client();
-  String? _token;
 
-  Future<String?> getToken() async {
-    if (_token != null) return _token;
-    final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString(AppConstants.loginKey);
-    return _token;
+  Future<String?> getToken() => SessionManager.instance.getToken();
+
+  Future<void> setToken(String token, {int? expiresIn}) =>
+      SessionManager.instance.saveSession(token, expiresIn: expiresIn);
+
+  Future<void> clearToken() => SessionManager.instance.clear();
+
+  /// Returns a token that is present and not yet expired, otherwise forces a
+  /// logout. Stops expired sessions before they ever reach the network.
+  Future<String> _requireValidToken() async {
+    final token = await SessionManager.instance.getToken();
+
+    if (token == null || token.isEmpty) {
+      await SessionManager.instance.forceLogout(
+        reason: 'Please login to continue.',
+      );
+      throw UnauthorizedException('No authentication token');
+    }
+
+    if (SessionManager.instance.isExpired) {
+      await SessionManager.instance.forceLogout();
+      throw UnauthorizedException('Session expired. Please login again.');
+    }
+
+    return token;
   }
 
-  Future<void> setToken(String token) async {
-    _token = token;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(AppConstants.loginKey, token);
-  }
-
-  Future<void> clearToken() async {
-    _token = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(AppConstants.loginKey);
-    await prefs.remove(AppConstants.userKey);
-  }
-
-  Map<String, String> _headers({bool auth = true}) {
+  Map<String, String> _headers({bool auth = true, String? token}) {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
-    if (auth && _token != null && _token!.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $_token';
+    if (auth && token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
     }
     return headers;
   }
@@ -53,10 +59,14 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
+  /// Any 401 — or an explicit `force_logout` from the backend — ends the
+  /// session here, so no individual screen has to remember to handle it.
   Future<Map<String, dynamic>> _handleResponse(http.Response response) async {
     final decoded = _decodeResponse(response);
-    if (response.statusCode == 401) {
-      throw UnauthorizedException(decoded['message'] ?? 'Session expired. Please login again.');
+    if (response.statusCode == 401 || decoded['force_logout'] == true) {
+      final message = decoded['message'] ?? 'Session expired. Please login again.';
+      await SessionManager.instance.forceLogout(reason: message);
+      throw UnauthorizedException(message);
     }
     return decoded;
   }
@@ -65,15 +75,12 @@ class ApiService {
   // ✅ GET REQUEST
   // ============================================================
   Future<Map<String, dynamic>> get(String endpoint) async {
-    final token = await getToken();
-    if (token == null || token.isEmpty) {
-      throw UnauthorizedException('No authentication token');
-    }
+    final token = await _requireValidToken();
 
     final uri = Uri.parse('${AppConstants.baseUrl}/$endpoint')
         .replace(queryParameters: {'token': token});
 
-    final headers = _headers();
+    final headers = _headers(token: token);
     print('🟢 GET URL: $uri');
 
     var response = await _client
@@ -107,11 +114,9 @@ class ApiService {
       Map<String, dynamic> data, {
         bool auth = true,
       }) async {
+    String? token;
     if (auth) {
-      final token = await getToken();
-      if (token == null || token.isEmpty) {
-        throw UnauthorizedException('No authentication token');
-      }
+      token = await _requireValidToken();
       data['_token'] = token;
     }
 
@@ -122,7 +127,7 @@ class ApiService {
 
     var response = await _client.post(
       uri,
-      headers: _headers(auth: auth),
+      headers: _headers(auth: auth, token: token),
       body: jsonEncode(data),
     ).timeout(AppConstants.httpTimeout);
 
@@ -132,7 +137,7 @@ class ApiService {
         print('🟢 Redirecting to: $location');
         response = await _client.post(
           Uri.parse(location),
-          headers: _headers(auth: auth),
+          headers: _headers(auth: auth, token: token),
           body: jsonEncode(data),
         ).timeout(AppConstants.httpTimeout);
       }
@@ -159,21 +164,19 @@ class ApiService {
       File? file, {
         String fileField = 'photo',
       }) async {
-    final token = await getToken();
-    if (token == null || token.isEmpty) {
-      throw UnauthorizedException('No authentication token');
-    }
-    fields['_token'] = token;
+    final token = await _requireValidToken();
+
+    // Never mutate the caller's map: a const literal would throw, and a reused
+    // map would silently accumulate stale tokens across retries.
+    fields = Map<String, String>.of(fields)..['_token'] = token;
 
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('${AppConstants.baseUrl}/$endpoint'),
     );
 
-    if (_token != null && _token!.isNotEmpty) {
-      request.headers['Authorization'] = 'Bearer $_token';
-      request.headers['Accept'] = 'application/json';
-    }
+    request.headers['Authorization'] = 'Bearer $token';
+    request.headers['Accept'] = 'application/json';
 
     request.fields.addAll(fields);
 
@@ -215,28 +218,21 @@ class ApiService {
         : '(empty)';
     print('🟢 Multipart Response: $bodyPreview');
 
-    final decoded = _decodeResponse(response);
-    if (response.statusCode == 401) {
-      throw UnauthorizedException(decoded['message'] ?? 'Session expired. Please login again.');
-    }
-    return decoded;
+    return _handleResponse(response);
   }
 
   // ============================================================
   // ✅ PUT REQUEST
   // ============================================================
   Future<Map<String, dynamic>> put(String endpoint, Map<String, dynamic> data) async {
-    final token = await getToken();
-    if (token == null || token.isEmpty) {
-      throw UnauthorizedException('No authentication token');
-    }
+    final token = await _requireValidToken();
     data['_token'] = token;
 
     final uri = Uri.parse('${AppConstants.baseUrl}/$endpoint');
 
     var response = await _client.put(
       uri,
-      headers: _headers(),
+      headers: _headers(token: token),
       body: jsonEncode(data),
     ).timeout(AppConstants.httpTimeout);
 
@@ -246,7 +242,7 @@ class ApiService {
         print('🟢 Redirecting to: $location');
         response = await _client.put(
           Uri.parse(location),
-          headers: _headers(),
+          headers: _headers(token: token),
           body: jsonEncode(data),
         ).timeout(AppConstants.httpTimeout);
       }
@@ -264,6 +260,19 @@ class ApiService {
       'password': password,
       'remember': remember,
     }, auth: false);
+  }
+
+  /// Ends the server-side session, then clears the local one.
+  ///
+  /// Without the server call, `user_sessions.is_active` and `users.is_logged_in`
+  /// stayed set after logout, so the admin panel kept showing the user online.
+  Future<void> logout() async {
+    try {
+      await post('auth/logout', {});
+    } catch (_) {
+      // An expired or unreachable session still has to log out locally.
+    }
+    await clearToken();
   }
 
   // ============================================================
@@ -349,7 +358,10 @@ class ApiService {
     File file, {
     Map<String, String> fields = const {},
   }) async {
-    return postMultipart('employee/update', fields, file,
+    // Copied because postMultipart adds the token to the map it is given, and
+    // the default here is a const (unmodifiable) map — which made every photo
+    // upload throw before it reached the network.
+    return postMultipart('employee/update', Map<String, String>.of(fields), file,
         fileField: 'profile_photo');
   }
 

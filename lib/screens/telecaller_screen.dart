@@ -348,21 +348,25 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A5F)))
-          : FadeTransition(
-        opacity: _fadeAnimation,
-        child: Column(
-          children: [
-            if (_stats != null) _buildStatsRow(),
-            _buildTabRow(),
-            _buildSearchBar(),
-            Expanded(
-              child: _tabIndex == 0
-                  ? _buildLeads()
-                  : _buildFollowUps(),
-            ),
-          ],
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A5F)))
+            : FadeTransition(
+          opacity: _fadeAnimation,
+          child: Column(
+            children: [
+              if (_stats != null) _buildStatsRow(),
+              _buildTabRow(),
+              _buildSearchBar(),
+              Expanded(
+                child: _tabIndex == 0
+                    ? _buildLeads()
+                    : _buildFollowUps(),
+              ),
+            ],
+          ),
         ),
       ),
     );

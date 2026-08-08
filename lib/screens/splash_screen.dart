@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/session_manager.dart';
 import '../utils/constants.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
@@ -59,12 +60,29 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     await Future.delayed(const Duration(seconds: 3));
 
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(AppConstants.loginKey);
     final remember = prefs.getBool(AppConstants.rememberKey) ?? false;
+
+    // A stored token is not the same as a valid one — check the expiry before
+    // trusting it, and tear the session down if it has already lapsed.
+    final validSession = await SessionManager.instance.hasValidSession();
+    if (!validSession && SessionManager.instance.hasToken) {
+      await SessionManager.instance.clear();
+      await prefs.setBool(AppConstants.autoLogoutFlagKey, true);
+      await prefs.setString(
+        AppConstants.autoLogoutReasonKey,
+        'Session expired. Please login again.',
+      );
+    }
+
+    // "Remember me" off means the session must not outlive the app. Without
+    // this the token stayed on disk, still valid, until it expired on its own.
+    if (!remember && SessionManager.instance.hasToken) {
+      await SessionManager.instance.clear();
+    }
 
     if (!mounted) return;
 
-    if (token != null && remember) {
+    if (validSession && remember) {
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(

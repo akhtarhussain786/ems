@@ -21,10 +21,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _obscurePassword = true;
 
-  // Auto-logout timer
-  Timer? _autoLogoutTimer;
-  static const Duration _autoLogoutDuration = Duration(hours: 12);
-
   @override
   void initState() {
     super.initState();
@@ -36,19 +32,20 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _employeeIdController.dispose();
     _passwordController.dispose();
-    _autoLogoutTimer?.cancel();
     super.dispose();
   }
 
-  // Check if user was auto-logged out and show message
+  // Check if the user was kicked out by an expired session and explain why
   void _checkAndHandleAutoLogout() async {
     final prefs = await SharedPreferences.getInstance();
-    final wasAutoLogout = prefs.getBool('was_auto_logout') ?? false;
+    final wasAutoLogout = prefs.getBool(AppConstants.autoLogoutFlagKey) ?? false;
 
     if (wasAutoLogout) {
-      await prefs.remove('was_auto_logout');
+      final reason = prefs.getString(AppConstants.autoLogoutReasonKey);
+      await prefs.remove(AppConstants.autoLogoutFlagKey);
+      await prefs.remove(AppConstants.autoLogoutReasonKey);
       if (mounted) {
-        _showInfo('🔐 Session expired. Please login again for security.');
+        _showInfo('🔐 ${reason ?? 'Session expired. Please login again.'}');
       }
     }
   }
@@ -132,7 +129,11 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        await ApiService().setToken(token);
+        // expires_in is a fallback; the JWT's own exp claim takes precedence
+        final expiresIn = response['expires_in'] is int
+            ? response['expires_in'] as int
+            : int.tryParse('${response['expires_in']}');
+        await ApiService().setToken(token, expiresIn: expiresIn);
 
         final prefs = await SharedPreferences.getInstance();
 
@@ -148,11 +149,12 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         await prefs.setString(AppConstants.userKey, jsonEncode(userData));
-        await prefs.setString('login_timestamp', DateTime.now().toIso8601String());
-        await prefs.remove('was_auto_logout');
-
-        // ✅ Start auto-logout timer
-        _startAutoLogoutTimer();
+        await prefs.setString(
+          AppConstants.loginTimestampKey,
+          DateTime.now().toIso8601String(),
+        );
+        await prefs.remove(AppConstants.autoLogoutFlagKey);
+        await prefs.remove(AppConstants.autoLogoutReasonKey);
 
         if (!mounted) return;
 
@@ -176,42 +178,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  void _startAutoLogoutTimer() {
-    _autoLogoutTimer?.cancel();
-    _autoLogoutTimer = Timer(_autoLogoutDuration, () {
-      _performAutoLogout();
-    });
-  }
-
-  Future<void> _performAutoLogout() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('was_auto_logout', true);
-      await ApiService().clearToken();
-      await prefs.remove(AppConstants.userKey);
-      await prefs.remove('login_timestamp');
-
-      if (mounted) {
-        _showInfo('🔐 Auto-logged out after 12 hours for security.');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
-      }
-    } catch (e) {
-      // Silent error handling
-    }
-  }
-
-  void _refreshAutoLogoutTimer() {
-    _autoLogoutTimer?.cancel();
-    _startAutoLogoutTimer();
-  }
-
-  void _onUserInteraction() {
-    _refreshAutoLogoutTimer();
   }
 
   void _showError(String msg) {
@@ -283,7 +249,7 @@ class _LoginScreenState extends State<LoginScreen> {
               vertical: 20,
             ),
             child: GestureDetector(
-              onTap: _onUserInteraction,
+              onTap: () => FocusScope.of(context).unfocus(),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -563,7 +529,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 color: Colors.white,
                                 fontSize: 16,
                               ),
-                              onTap: _onUserInteraction,
                               decoration: InputDecoration(
                                 labelText: 'Employee ID',
                                 hintText: 'Enter your employee ID',
@@ -634,7 +599,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 color: Colors.white,
                                 fontSize: 16,
                               ),
-                              onTap: _onUserInteraction,
                               decoration: InputDecoration(
                                 labelText: 'Password',
                                 hintText: 'Enter your password',
@@ -661,7 +625,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                     size: 22,
                                   ),
                                   onPressed: () {
-                                    _onUserInteraction();
                                     setState(
                                           () => _obscurePassword = !_obscurePassword,
                                     );
@@ -706,7 +669,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               // Custom checkbox
                               GestureDetector(
                                 onTap: () {
-                                  _onUserInteraction();
                                   setState(() => _remember = !_remember);
                                 },
                                 child: Row(
@@ -750,7 +712,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               Flexible(
                                 child: GestureDetector(
                                   onTap: () {
-                                    _onUserInteraction();
                                     _showInfo('📞 Please contact admin for password reset assistance.');
                                   },
                                   child: Container(

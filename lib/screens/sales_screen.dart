@@ -90,21 +90,25 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
-      body: _loading
-          ? const Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFF1E3A5F),
-          strokeWidth: 3,
-        ),
-      )
-          : Column(
-        children: [
-          Expanded(
-            child: _tabIndex == 0
-                ? _buildKanbanView()
-                : _buildListView(),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: _loading
+            ? const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF1E3A5F),
+            strokeWidth: 3,
           ),
-        ],
+        )
+            : Column(
+          children: [
+            Expanded(
+              child: _tabIndex == 0
+                  ? _buildKanbanView()
+                  : _buildListView(),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: _buildGlassBottomNav(),
     );
@@ -695,7 +699,7 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
         minChildSize: 0.3,
         maxChildSize: 0.9,
         expand: false,
-        builder: (_, controller) => Container(
+        builder: (ctx, controller) => Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -707,7 +711,8 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
               ),
             ],
           ),
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.fromLTRB(24, 24, 24,
+              24 + MediaQuery.of(ctx).viewPadding.bottom),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

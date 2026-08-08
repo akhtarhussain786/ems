@@ -312,56 +312,60 @@ class _MarketingScreenState extends State<MarketingScreen> with SingleTickerProv
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
-      body: _loading
-          ? const Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFF1E3A5F),
-          strokeWidth: 3,
-        ),
-      )
-          : RefreshIndicator(
-        onRefresh: _fetch,
-        color: const Color(0xFF1E3A5F),
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: ListView(
-            padding: const EdgeInsets.all(12),
-            children: [
-              _buildGlassDutyCard(dutyActive),
-              const SizedBox(height: 12),
-              if (dutyActive) ...[
-                _buildGlassActionButton(
-                  icon: Icons.add_location_rounded,
-                  label: 'Record Field Visit',
-                  color: const Color(0xFF1E3A5F),
-                  onTap: () => _showVisitForm(),
-                ),
-                const SizedBox(height: 10),
-                _buildGlassActionButton(
-                  icon: Icons.logout_rounded,
-                  label: _dutySubmitting ? 'Ending...' : 'End Duty',
-                  color: Colors.red,
-                  onTap: _dutySubmitting ? null : _endDuty,
-                ),
-                const SizedBox(height: 10),
-                if (_duty?['travel_allowance'] != null)
-                  _buildGlassAllowanceCard(),
-              ] else ...[
-                _buildGlassActionButton(
-                  icon: Icons.login_rounded,
-                  label: _dutySubmitting ? 'Starting...' : 'Start Duty',
-                  color: Colors.green,
-                  onTap: _dutySubmitting ? null : _startDuty,
-                ),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: _loading
+            ? const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF1E3A5F),
+            strokeWidth: 3,
+          ),
+        )
+            : RefreshIndicator(
+          onRefresh: _fetch,
+          color: const Color(0xFF1E3A5F),
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                _buildGlassDutyCard(dutyActive),
+                const SizedBox(height: 12),
+                if (dutyActive) ...[
+                  _buildGlassActionButton(
+                    icon: Icons.add_location_rounded,
+                    label: 'Record Field Visit',
+                    color: const Color(0xFF1E3A5F),
+                    onTap: () => _showVisitForm(),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildGlassActionButton(
+                    icon: Icons.logout_rounded,
+                    label: _dutySubmitting ? 'Ending...' : 'End Duty',
+                    color: Colors.red,
+                    onTap: _dutySubmitting ? null : _endDuty,
+                  ),
+                  const SizedBox(height: 10),
+                  if (_duty?['travel_allowance'] != null)
+                    _buildGlassAllowanceCard(),
+                ] else ...[
+                  _buildGlassActionButton(
+                    icon: Icons.login_rounded,
+                    label: _dutySubmitting ? 'Starting...' : 'Start Duty',
+                    color: Colors.green,
+                    onTap: _dutySubmitting ? null : _startDuty,
+                  ),
+                ],
+                const Divider(height: 24),
+                _buildVisitsHeader(),
+                const SizedBox(height: 8),
+                ...(_visits.isEmpty
+                    ? [_buildEmptyVisits()]
+                    : _visits.map((v) => _buildGlassVisitCard(v)).toList()),
+                const SizedBox(height: 20),
               ],
-              const Divider(height: 24),
-              _buildVisitsHeader(),
-              const SizedBox(height: 8),
-              ...(_visits.isEmpty
-                  ? [_buildEmptyVisits()]
-                  : _visits.map((v) => _buildGlassVisitCard(v)).toList()),
-              const SizedBox(height: 20),
-            ],
+            ),
           ),
         ),
       ),
@@ -921,7 +925,8 @@ class _MarketingScreenState extends State<MarketingScreen> with SingleTickerProv
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocalState) => Padding(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
+            bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom,
             left: 20,
             right: 20,
             top: 20,

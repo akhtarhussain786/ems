@@ -55,44 +55,48 @@ class _HistoryScreenState extends State<HistoryScreen> {
         backgroundColor: const Color(0xFF1E3A5F),
         foregroundColor: Colors.white,
       ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: Colors.grey[100],
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: () => _changeMonth(-1),
-                ),
-                Text(
-                  DateFormat('MMMM yyyy').format(DateFormat('yyyy-MM').parse(_selectedMonth)),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: () => _changeMonth(1),
-                ),
-              ],
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Colors.grey[100],
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: () => _changeMonth(-1),
+                  ),
+                  Text(
+                    DateFormat('MMMM yyyy').format(DateFormat('yyyy-MM').parse(_selectedMonth)),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: () => _changeMonth(1),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _records.isEmpty
-                    ? const Center(child: Text('No attendance records found'))
-                    : RefreshIndicator(
-                        onRefresh: _fetchHistory,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(8),
-                          itemCount: _records.length,
-                          itemBuilder: (_, i) => _buildRecord(_records[i]),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _records.isEmpty
+                      ? const Center(child: Text('No attendance records found'))
+                      : RefreshIndicator(
+                          onRefresh: _fetchHistory,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(8),
+                            itemCount: _records.length,
+                            itemBuilder: (_, i) => _buildRecord(_records[i]),
+                          ),
                         ),
-                      ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

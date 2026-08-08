@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'services/session_manager.dart';
 import 'screens/splash_screen.dart';
+import 'screens/login_screen.dart';
+import 'utils/constants.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SessionManager.instance.load();
   runApp(const EAMSApp());
 }
 
@@ -15,6 +19,12 @@ class EAMSApp extends StatelessWidget {
     return MaterialApp(
       title: 'Yatharth Connect',
       debugShowCheckedModeBanner: false,
+
+      // Lets SessionManager route to login without a BuildContext
+      navigatorKey: navigatorKey,
+      routes: {
+        AppConstants.loginRoute: (_) => const LoginScreen(),
+      },
 
       theme: ThemeData(
         colorSchemeSeed: const Color(0xFF1E3A5F),

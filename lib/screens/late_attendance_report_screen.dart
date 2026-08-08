@@ -122,39 +122,43 @@ class _LateAttendanceReportScreenState extends State<LateAttendanceReportScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          _buildMonthSelector(),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFF1E3A5F),
-                      strokeWidth: 3,
-                    ),
-                  )
-                : FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: RefreshIndicator(
-                      onRefresh: _fetchLateReport,
-                      color: const Color(0xFF1E3A5F),
-                      child: ListView(
-                        padding: const EdgeInsets.all(12),
-                        physics: const AlwaysScrollableScrollPhysics(
-                          parent: BouncingScrollPhysics(),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: Column(
+          children: [
+            _buildMonthSelector(),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF1E3A5F),
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: RefreshIndicator(
+                        onRefresh: _fetchLateReport,
+                        color: const Color(0xFF1E3A5F),
+                        child: ListView(
+                          padding: const EdgeInsets.all(12),
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
+                          children: [
+                            _buildSummaryCard(),
+                            const SizedBox(height: 12),
+                            _buildStatsRow(),
+                            const SizedBox(height: 16),
+                            _buildLateRecordsList(),
+                          ],
                         ),
-                        children: [
-                          _buildSummaryCard(),
-                          const SizedBox(height: 12),
-                          _buildStatsRow(),
-                          const SizedBox(height: 16),
-                          _buildLateRecordsList(),
-                        ],
                       ),
                     ),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

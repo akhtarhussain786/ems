@@ -406,42 +406,46 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
-      body: Column(
-        children: [
-          _buildSearchBar(),
-          _buildFilterChips(),
-          Expanded(
-            child: _loading
-                ? const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF1E3A5F),
-                strokeWidth: 3,
-              ),
-            )
-                : _leads.isEmpty
-                ? _buildEmptyState()
-                : RefreshIndicator(
-              onRefresh: _fetch,
-              color: const Color(0xFF1E3A5F),
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  itemCount: _leads.length,
-                  itemBuilder: (_, i) {
-                    final l = _leads[i];
-                    final name = l['customer_name'] ?? '';
-                    final phone = l['phone'] ?? l['customer_phone'] ?? 'N/A';
-                    final status = l['status'] ?? 'new';
-                    final statusColor = _statusColor(status);
-
-                    return _buildGlassLeadCard(l, name, phone, status, statusColor);
-                  },
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: Column(
+          children: [
+            _buildSearchBar(),
+            _buildFilterChips(),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFF1E3A5F),
+                  strokeWidth: 3,
+                ),
+              )
+                  : _leads.isEmpty
+                  ? _buildEmptyState()
+                  : RefreshIndicator(
+                onRefresh: _fetch,
+                color: const Color(0xFF1E3A5F),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    itemCount: _leads.length,
+                    itemBuilder: (_, i) {
+                      final l = _leads[i];
+                      final name = l['customer_name'] ?? '';
+                      final phone = l['phone'] ?? l['customer_phone'] ?? 'N/A';
+                      final status = l['status'] ?? 'new';
+                      final statusColor = _statusColor(status);
+  
+                      return _buildGlassLeadCard(l, name, phone, status, statusColor);
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       floatingActionButton: _buildFAB(),
     );
@@ -842,8 +846,9 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+      builder: (ctx) => Container(
+        padding: EdgeInsets.only(
+            top: 8, bottom: 8 + MediaQuery.of(ctx).viewPadding.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -918,7 +923,8 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocalState) => Padding(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
+            bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom,
             left: 16,
             right: 16,
             top: 16,

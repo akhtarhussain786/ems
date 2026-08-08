@@ -106,32 +106,36 @@ class _AttendanceReportScreenState extends State<AttendanceReportScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
-      body: Column(
-        children: [
-          _buildDateSelector(),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFF1E3A5F),
-                      strokeWidth: 3,
-                    ),
-                  )
-                : _records.isEmpty
-                    ? _buildEmptyState()
-                    : FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: RefreshIndicator(
-                          onRefresh: _fetchData,
-                          color: const Color(0xFF1E3A5F),
-                          child: ListView(
-                            padding: const EdgeInsets.all(12),
-                            children: _buildContent(),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: Column(
+          children: [
+            _buildDateSelector(),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF1E3A5F),
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : _records.isEmpty
+                      ? _buildEmptyState()
+                      : FadeTransition(
+                          opacity: _fadeAnimation,
+                          child: RefreshIndicator(
+                            onRefresh: _fetchData,
+                            color: const Color(0xFF1E3A5F),
+                            child: ListView(
+                              padding: const EdgeInsets.all(12),
+                              children: _buildContent(),
+                            ),
                           ),
                         ),
-                      ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

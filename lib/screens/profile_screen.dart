@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
+import '../utils/profile_image.dart';
 import 'salary_report_screen.dart';
 import 'attendance_report_screen.dart';
 import 'home_screen.dart';
@@ -27,35 +28,39 @@ class AbsentReportScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.cancel_rounded, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Absent Report',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.cancel_rounded, size: 64, color: Colors.grey[400]),
+              const SizedBox(height: 16),
+              Text(
+                'Absent Report',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[700],
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Absent attendance records',
-              style: TextStyle(color: Colors.grey[500]),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A5F),
-                foregroundColor: Colors.white,
+              const SizedBox(height: 8),
+              Text(
+                'Absent attendance records',
+                style: TextStyle(color: Colors.grey[500]),
               ),
-              child: const Text('Go Back'),
-            ),
-          ],
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E3A5F),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Go Back'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -353,143 +358,147 @@ class _SettingsScreenState extends State<SettingsScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Profile Settings Section
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.08),
-                  blurRadius: 12,
-                  offset: const Offset(0, 3),
-                ),
-              ],
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // Profile Settings Section
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  _buildSettingsHeader('Profile Settings', Icons.person_rounded),
+                  _buildSettingsTile(
+                    icon: Icons.person_rounded,
+                    title: 'Edit Profile',
+                    subtitle: 'Update your profile information',
+                    onTap: _editProfile,
+                  ),
+                  const Divider(height: 1, indent: 16),
+                  _buildSettingsTile(
+                    icon: Icons.photo_camera_rounded,
+                    title: 'Change Photo',
+                    subtitle: 'Update your profile picture',
+                    onTap: _changePhoto,
+                  ),
+                  const Divider(height: 1, indent: 16),
+                  _buildSettingsTile(
+                    icon: Icons.lock_rounded,
+                    title: 'Change Password',
+                    subtitle: 'Update your password',
+                    onTap: _changePassword,
+                  ),
+                ],
+              ),
             ),
-            child: Column(
-              children: [
-                _buildSettingsHeader('Profile Settings', Icons.person_rounded),
-                _buildSettingsTile(
-                  icon: Icons.person_rounded,
-                  title: 'Edit Profile',
-                  subtitle: 'Update your profile information',
-                  onTap: _editProfile,
-                ),
-                const Divider(height: 1, indent: 16),
-                _buildSettingsTile(
-                  icon: Icons.photo_camera_rounded,
-                  title: 'Change Photo',
-                  subtitle: 'Update your profile picture',
-                  onTap: _changePhoto,
-                ),
-                const Divider(height: 1, indent: 16),
-                _buildSettingsTile(
-                  icon: Icons.lock_rounded,
-                  title: 'Change Password',
-                  subtitle: 'Update your password',
-                  onTap: _changePassword,
-                ),
-              ],
+            const SizedBox(height: 16),
+  
+            // Preferences Section
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  _buildSettingsHeader('Preferences', Icons.settings_rounded),
+                  _buildSwitchTile(
+                    icon: Icons.notifications_rounded,
+                    title: 'Notifications',
+                    subtitle: 'Receive push notifications',
+                    value: _notifications,
+                    onChanged: (val) => setState(() => _notifications = val),
+                  ),
+                  const Divider(height: 1, indent: 16),
+                  _buildSwitchTile(
+                    icon: Icons.dark_mode_rounded,
+                    title: 'Dark Mode',
+                    subtitle: 'Enable dark theme',
+                    value: _darkMode,
+                    onChanged: (val) => setState(() => _darkMode = val),
+                  ),
+                  const Divider(height: 1, indent: 16),
+                  _buildSwitchTile(
+                    icon: Icons.sync_rounded,
+                    title: 'Auto Sync',
+                    subtitle: 'Automatically sync data',
+                    value: _autoSync,
+                    onChanged: (val) => setState(() => _autoSync = val),
+                  ),
+                  const Divider(height: 1, indent: 16),
+                  _buildDropdownTile(
+                    icon: Icons.language_rounded,
+                    title: 'Language',
+                    subtitle: _selectedLanguage,
+                    items: ['English', 'Hindi', 'Marathi', 'Gujarati'],
+                    onChanged: (val) => setState(() => _selectedLanguage = val!),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-
-          // Preferences Section
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.08),
-                  blurRadius: 12,
-                  offset: const Offset(0, 3),
-                ),
-              ],
+            const SizedBox(height: 16),
+  
+            // About Section
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  _buildSettingsHeader('About', Icons.info_rounded),
+                  _buildSettingsTile(
+                    icon: Icons.info_rounded,
+                    title: 'App Version',
+                    subtitle: 'Yatharth Connect v1.0.0',
+                    onTap: () {},
+                  ),
+                  const Divider(height: 1, indent: 16),
+                  _buildSettingsTile(
+                    icon: Icons.privacy_tip_rounded,
+                    title: 'Privacy Policy',
+                    subtitle: 'Read our privacy policy',
+                    onTap: () {},
+                  ),
+                  const Divider(height: 1, indent: 16),
+                  _buildSettingsTile(
+                    icon: Icons.help_rounded,
+                    title: 'Help & Support',
+                    subtitle: 'Get help and support',
+                    onTap: () {},
+                  ),
+                ],
+              ),
             ),
-            child: Column(
-              children: [
-                _buildSettingsHeader('Preferences', Icons.settings_rounded),
-                _buildSwitchTile(
-                  icon: Icons.notifications_rounded,
-                  title: 'Notifications',
-                  subtitle: 'Receive push notifications',
-                  value: _notifications,
-                  onChanged: (val) => setState(() => _notifications = val),
-                ),
-                const Divider(height: 1, indent: 16),
-                _buildSwitchTile(
-                  icon: Icons.dark_mode_rounded,
-                  title: 'Dark Mode',
-                  subtitle: 'Enable dark theme',
-                  value: _darkMode,
-                  onChanged: (val) => setState(() => _darkMode = val),
-                ),
-                const Divider(height: 1, indent: 16),
-                _buildSwitchTile(
-                  icon: Icons.sync_rounded,
-                  title: 'Auto Sync',
-                  subtitle: 'Automatically sync data',
-                  value: _autoSync,
-                  onChanged: (val) => setState(() => _autoSync = val),
-                ),
-                const Divider(height: 1, indent: 16),
-                _buildDropdownTile(
-                  icon: Icons.language_rounded,
-                  title: 'Language',
-                  subtitle: _selectedLanguage,
-                  items: ['English', 'Hindi', 'Marathi', 'Gujarati'],
-                  onChanged: (val) => setState(() => _selectedLanguage = val!),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // About Section
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.08),
-                  blurRadius: 12,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                _buildSettingsHeader('About', Icons.info_rounded),
-                _buildSettingsTile(
-                  icon: Icons.info_rounded,
-                  title: 'App Version',
-                  subtitle: 'Yatharth Connect v1.0.0',
-                  onTap: () {},
-                ),
-                const Divider(height: 1, indent: 16),
-                _buildSettingsTile(
-                  icon: Icons.privacy_tip_rounded,
-                  title: 'Privacy Policy',
-                  subtitle: 'Read our privacy policy',
-                  onTap: () {},
-                ),
-                const Divider(height: 1, indent: 16),
-                _buildSettingsTile(
-                  icon: Icons.help_rounded,
-                  title: 'Help & Support',
-                  subtitle: 'Get help and support',
-                  onTap: () {},
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-        ],
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
     );
   }
@@ -646,82 +655,86 @@ class AboutScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.1),
-                    blurRadius: 20,
-                    spreadRadius: 5,
-                  ),
-                ],
-              ),
-              child: Image.asset(
-                'assets/images/logo25.png',
-                height: 80,
-                width: 80,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Icon(
-                    Icons.business_center_rounded,
-                    size: 80,
-                    color: Color(0xFF1E3A5F),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Yatharth Connect',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF1E3A5F),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Version 1.0.0',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Employee Attendance System',
-              style: TextStyle(color: Colors.grey[500]),
-            ),
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                '© 2024 Yatharth Group of Institution',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A5F),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: Image.asset(
+                  'assets/images/logo25.png',
+                  height: 80,
+                  width: 80,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(
+                      Icons.business_center_rounded,
+                      size: 80,
+                      color: Color(0xFF1E3A5F),
+                    );
+                  },
                 ),
               ),
-              child: const Text('Go Back'),
-            ),
-          ],
+              const SizedBox(height: 24),
+              Text(
+                'Yatharth Connect',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF1E3A5F),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Version 1.0.0',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Employee Attendance System',
+                style: TextStyle(color: Colors.grey[500]),
+              ),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  '© 2024 Yatharth Group of Institution',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E3A5F),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Go Back'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -780,13 +793,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             emp['department_name'] ?? merged['department_name'];
         merged['designation_name'] =
             emp['designation_name'] ?? merged['designation_name'];
-        if (emp['profile_photo'] != null &&
-            emp['profile_photo'].toString().isNotEmpty) {
-          final photo = emp['profile_photo'].toString();
-          merged['profile_photo'] = photo.startsWith('http')
-              ? photo
-              : '${AppConstants.baseUrl}/$photo';
-        }
+        final photoUrl = ProfileImage.urlFor(emp['profile_photo']);
+        if (photoUrl != null) merged['profile_photo'] = photoUrl;
         setState(() => _userData = merged);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(AppConstants.userKey, jsonEncode(merged));
@@ -909,14 +917,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final department = _userData['department_name'] ?? 'N/A';
     final designation = _userData['designation_name'] ?? 'N/A';
 
-    File? profileImage;
-    if (_profileImagePath != null && _profileImagePath!.isNotEmpty) {
-      final file = File(_profileImagePath!);
-      if (file.existsSync()) {
-        profileImage = file;
-      }
-    }
-    final serverPhotoUrl = (_userData['profile_photo'] as String?) ?? '';
+    // Server copy first so the avatar is the account's, not just this device's.
+    // Handles the login response's relative path as well as an absolute URL.
+    final profileImage = ProfileImage.resolve(
+      serverPhoto: _userData['profile_photo'],
+      localPath: _profileImagePath,
+    );
 
     return PopScope(
       canPop: false,
@@ -950,351 +956,350 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: _goToDashboard,
           ),
         ),
-        body: Container(
-          color: const Color(0xFFF0F4F8),
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            physics: const BouncingScrollPhysics(),
-            children: [
-              // ==================== PROFILE HEADER CARD ====================
-              Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF1E3A5F).withOpacity(0.3),
-                      spreadRadius: 2,
-                      blurRadius: 20,
-                      offset: const Offset(0, 4),
+        body: SafeArea(
+          // Keeps content clear of the system navigation bar
+          top: false,
+          child: Container(
+            color: const Color(0xFFF0F4F8),
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              physics: const BouncingScrollPhysics(),
+              children: [
+                // ==================== PROFILE HEADER CARD ====================
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  ],
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
-                child: Column(
-                  children: [
-                    // Profile Image
-                    Stack(
-                      children: [
-                        Container(
-                          width: 110,
-                          height: 110,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 3,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.white.withOpacity(0.2),
-                                blurRadius: 20,
-                                spreadRadius: 5,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF1E3A5F).withOpacity(0.3),
+                        spreadRadius: 2,
+                        blurRadius: 20,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
+                  child: Column(
+                    children: [
+                      // Profile Image
+                      Stack(
+                        children: [
+                          Container(
+                            width: 110,
+                            height: 110,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.3),
+                                width: 3,
                               ),
-                            ],
-                            image: profileImage != null
-                                ? DecorationImage(
-                              image: FileImage(profileImage!),
-                              fit: BoxFit.cover,
-                            )
-                                : serverPhotoUrl.isNotEmpty
-                                    ? DecorationImage(
-                                  image: NetworkImage(serverPhotoUrl),
-                                  fit: BoxFit.cover,
-                                  onError: (_, __) {},
-                                )
-                                    : null,
-                          ),
-                          child: (profileImage == null && serverPhotoUrl.isEmpty)
-                              ? CircleAvatar(
-                            radius: 50,
-                            backgroundColor: Colors.white.withOpacity(0.9),
-                            child: Text(
-                              name.isNotEmpty ? name[0].toUpperCase() : 'E',
-                              style: const TextStyle(
-                                fontSize: 44,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E3A5F),
-                              ),
-                            ),
-                          )
-                              : null,
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: GestureDetector(
-                            onTap: _pickAndUploadImage,
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 8,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.camera_alt_rounded,
-                                size: 22,
-                                color: Color(0xFF1E3A5F),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    // Name
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    // Role
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        role,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.white.withOpacity(0.8),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    // Employee Code
-                    Text(
-                      'ID: $code',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.5),
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Tap to change photo hint
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: const Text(
-                        'Tap camera icon to change photo',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // ==================== PERSONAL INFORMATION ====================
-              _buildSectionCard(
-                title: 'Personal Information',
-                icon: Icons.person_outline_rounded,
-                children: [
-                  _buildInfoTile(Icons.phone_rounded, 'Mobile', mobile),
-                  if (email.isNotEmpty && email != 'N/A') ...[
-                    const Divider(height: 1, indent: 16),
-                    _buildInfoTile(Icons.email_rounded, 'Email', email),
-                  ],
-                  const Divider(height: 1, indent: 16),
-                  _buildInfoTile(Icons.business_rounded, 'Department', department),
-                  const Divider(height: 1, indent: 16),
-                  _buildInfoTile(Icons.work_rounded, 'Designation', designation),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // ==================== REPORTS & SETTINGS ====================
-              _buildSectionCard(
-                title: 'Reports & Settings',
-                icon: Icons.grid_view_rounded,
-                children: [
-                  _buildMenuItem(
-                    icon: Icons.description_rounded,
-                    title: 'Daily Report',
-                    subtitle: "Today's attendance summary",
-                    iconColor: Colors.blue,
-                    onTap: () => _navigateToReport(const DailyAttendanceReportScreen()),
-                  ),
-                  const Divider(height: 1, indent: 16),
-                  _buildMenuItem(
-                    icon: Icons.calendar_month_rounded,
-                    title: 'Monthly Report',
-                    subtitle: "This month's attendance summary",
-                    iconColor: Colors.purple,
-                    onTap: () => _navigateToReport(const MonthlyAttendanceReportScreen()),
-                  ),
-                  const Divider(height: 1, indent: 16),
-                  _buildMenuItem(
-                    icon: Icons.warning_amber_rounded,
-                    title: 'Late Report',
-                    subtitle: 'Late attendance records',
-                    iconColor: Colors.orange,
-                    onTap: () => _navigateToReport(const LateAttendanceReportScreen()),
-                  ),
-                  const Divider(height: 1, indent: 16),
-                  _buildMenuItem(
-                    icon: Icons.cancel_rounded,
-                    title: 'Absent Report',
-                    subtitle: 'Absent attendance records',
-                    iconColor: Colors.red,
-                    onTap: () => _navigateToReport(
-                        const AttendanceReportScreen(type: ReportType.absent)),
-                  ),
-                  const Divider(height: 1, indent: 16),
-                  _buildMenuItem(
-                    icon: Icons.attach_money_rounded,
-                    title: 'Salary Report',
-                    subtitle: 'Salary & deductions summary',
-                    iconColor: Colors.green,
-                    onTap: _navigateToSalaryReport,
-                  ),
-                  const Divider(height: 1, indent: 16),
-                  _buildMenuItem(
-                    icon: Icons.settings_rounded,
-                    title: 'Settings',
-                    subtitle: 'App settings & preferences',
-                    iconColor: Colors.grey,
-                    showTrailing: true,
-                    onTap: () => _navigateToReport(SettingsScreen(
-                      userData: _userData,
-                      profileImagePath: _profileImagePath,
-                      onImageUpdated: widget.onImageUpdated,
-                      onDataChanged: _refreshProfile,
-                    )),
-                  ),
-                  const Divider(height: 1, indent: 16),
-                  _buildMenuItem(
-                    icon: Icons.info_outline_rounded,
-                    title: 'About',
-                    subtitle: 'Version 1.0.0',
-                    iconColor: Colors.grey,
-                    showTrailing: true,
-                    onTap: () => _navigateToReport(const AboutScreen()),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // ==================== LOGOUT BUTTON ====================
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.08),
-                      spreadRadius: 1,
-                      blurRadius: 12,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.logout_rounded,
-                      color: Colors.red,
-                      size: 22,
-                    ),
-                  ),
-                  title: const Text(
-                    'Logout',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.red,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Sign out from your account',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  trailing: const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 16,
-                    color: Colors.grey,
-                  ),
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        title: const Text('Logout'),
-                        content: const Text('Are you sure you want to logout?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              // TODO: Implement logout logic
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Logging out...'),
-                                  backgroundColor: Colors.blue,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.white.withOpacity(0.2),
+                                  blurRadius: 20,
+                                  spreadRadius: 5,
                                 ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              foregroundColor: Colors.white,
+                              ],
+                              image: profileImage != null
+                                  ? DecorationImage(
+                                image: profileImage,
+                                fit: BoxFit.cover,
+                                onError: (_, __) {},
+                              )
+                                  : null,
                             ),
-                            child: const Text('Logout'),
+                            child: profileImage == null
+                                ? CircleAvatar(
+                              radius: 50,
+                              backgroundColor: Colors.white.withOpacity(0.9),
+                              child: Text(
+                                name.isNotEmpty ? name[0].toUpperCase() : 'E',
+                                style: const TextStyle(
+                                  fontSize: 44,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1E3A5F),
+                                ),
+                              ),
+                            )
+                                : null,
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: GestureDetector(
+                              onTap: _pickAndUploadImage,
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt_rounded,
+                                  size: 22,
+                                  color: Color(0xFF1E3A5F),
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                    );
-                  },
+                      const SizedBox(height: 16),
+                      // Name
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      // Role
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          role,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.white.withOpacity(0.8),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      // Employee Code
+                      Text(
+                        'ID: $code',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.5),
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Tap to change photo hint
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.1),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: const Text(
+                          'Tap camera icon to change photo',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-
-              const SizedBox(height: 30),
-            ],
+  
+                const SizedBox(height: 16),
+  
+                // ==================== PERSONAL INFORMATION ====================
+                _buildSectionCard(
+                  title: 'Personal Information',
+                  icon: Icons.person_outline_rounded,
+                  children: [
+                    _buildInfoTile(Icons.phone_rounded, 'Mobile', mobile),
+                    if (email.isNotEmpty && email != 'N/A') ...[
+                      const Divider(height: 1, indent: 16),
+                      _buildInfoTile(Icons.email_rounded, 'Email', email),
+                    ],
+                    const Divider(height: 1, indent: 16),
+                    _buildInfoTile(Icons.business_rounded, 'Department', department),
+                    const Divider(height: 1, indent: 16),
+                    _buildInfoTile(Icons.work_rounded, 'Designation', designation),
+                  ],
+                ),
+  
+                const SizedBox(height: 16),
+  
+                // ==================== REPORTS & SETTINGS ====================
+                _buildSectionCard(
+                  title: 'Reports & Settings',
+                  icon: Icons.grid_view_rounded,
+                  children: [
+                    _buildMenuItem(
+                      icon: Icons.description_rounded,
+                      title: 'Daily Report',
+                      subtitle: "Today's attendance summary",
+                      iconColor: Colors.blue,
+                      onTap: () => _navigateToReport(const DailyAttendanceReportScreen()),
+                    ),
+                    const Divider(height: 1, indent: 16),
+                    _buildMenuItem(
+                      icon: Icons.calendar_month_rounded,
+                      title: 'Monthly Report',
+                      subtitle: "This month's attendance summary",
+                      iconColor: Colors.purple,
+                      onTap: () => _navigateToReport(const MonthlyAttendanceReportScreen()),
+                    ),
+                    const Divider(height: 1, indent: 16),
+                    _buildMenuItem(
+                      icon: Icons.warning_amber_rounded,
+                      title: 'Late Report',
+                      subtitle: 'Late attendance records',
+                      iconColor: Colors.orange,
+                      onTap: () => _navigateToReport(const LateAttendanceReportScreen()),
+                    ),
+                    const Divider(height: 1, indent: 16),
+                    _buildMenuItem(
+                      icon: Icons.cancel_rounded,
+                      title: 'Absent Report',
+                      subtitle: 'Absent attendance records',
+                      iconColor: Colors.red,
+                      onTap: () => _navigateToReport(
+                          const AttendanceReportScreen(type: ReportType.absent)),
+                    ),
+                    const Divider(height: 1, indent: 16),
+                    _buildMenuItem(
+                      icon: Icons.attach_money_rounded,
+                      title: 'Salary Report',
+                      subtitle: 'Salary & deductions summary',
+                      iconColor: Colors.green,
+                      onTap: _navigateToSalaryReport,
+                    ),
+                    const Divider(height: 1, indent: 16),
+                    _buildMenuItem(
+                      icon: Icons.settings_rounded,
+                      title: 'Settings',
+                      subtitle: 'App settings & preferences',
+                      iconColor: Colors.grey,
+                      showTrailing: true,
+                      onTap: () => _navigateToReport(SettingsScreen(
+                        userData: _userData,
+                        profileImagePath: _profileImagePath,
+                        onImageUpdated: widget.onImageUpdated,
+                        onDataChanged: _refreshProfile,
+                      )),
+                    ),
+                    const Divider(height: 1, indent: 16),
+                    _buildMenuItem(
+                      icon: Icons.info_outline_rounded,
+                      title: 'About',
+                      subtitle: 'Version 1.0.0',
+                      iconColor: Colors.grey,
+                      showTrailing: true,
+                      onTap: () => _navigateToReport(const AboutScreen()),
+                    ),
+                  ],
+                ),
+  
+                const SizedBox(height: 24),
+  
+                // ==================== LOGOUT BUTTON ====================
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.08),
+                        spreadRadius: 1,
+                        blurRadius: 12,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.logout_rounded,
+                        color: Colors.red,
+                        size: 22,
+                      ),
+                    ),
+                    title: const Text(
+                      'Logout',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Sign out from your account',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    trailing: const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 16,
+                      color: Colors.grey,
+                    ),
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          title: const Text('Logout'),
+                          content: const Text('Are you sure you want to logout?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                // TODO: Implement logout logic
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Logging out...'),
+                                    backgroundColor: Colors.blue,
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Logout'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+  
+                const SizedBox(height: 30),
+              ],
+            ),
           ),
         ),
       ),

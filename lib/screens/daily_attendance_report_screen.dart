@@ -142,37 +142,41 @@ class _DailyAttendanceReportScreenState extends State<DailyAttendanceReportScree
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          _buildDateSelector(),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFF1E3A5F),
-                      strokeWidth: 3,
-                    ),
-                  )
-                : FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: RefreshIndicator(
-                      onRefresh: _fetchDailyReport,
-                      color: const Color(0xFF1E3A5F),
-                      child: ListView(
-                        padding: const EdgeInsets.all(12),
-                        physics: const AlwaysScrollableScrollPhysics(
-                          parent: BouncingScrollPhysics(),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: Column(
+          children: [
+            _buildDateSelector(),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF1E3A5F),
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: RefreshIndicator(
+                        onRefresh: _fetchDailyReport,
+                        color: const Color(0xFF1E3A5F),
+                        child: ListView(
+                          padding: const EdgeInsets.all(12),
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
+                          children: [
+                            _buildSummaryCards(),
+                            const SizedBox(height: 16),
+                            _buildAttendanceList(),
+                          ],
                         ),
-                        children: [
-                          _buildSummaryCards(),
-                          const SizedBox(height: 16),
-                          _buildAttendanceList(),
-                        ],
                       ),
                     ),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
