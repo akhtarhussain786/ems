@@ -13,6 +13,8 @@ class LeadDetailScreen extends StatefulWidget {
 
 class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerProviderStateMixin {
   List<dynamic> _history = [];
+  List<dynamic> _leadsList = [];
+  bool _loadingLeads = false;
   bool _loading = true;
   String? _error;
   String _callStatus = 'No Answer';
@@ -32,7 +34,10 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _leadData = widget.lead ?? _getDefaultLead();
-    _fetchHistory();
+    _fetchLeadsList();
+    if ((_leadData['id'] ?? 0) > 0) {
+      _fetchHistory();
+    }
     _animationController.forward();
   }
 
@@ -45,9 +50,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
   Map<String, dynamic> _getDefaultLead() {
     return {
       'id': 0,
-      'customer_name': 'Lead Detail',
-      'first_name': 'Lead',
-      'last_name': 'Detail',
+      'customer_name': 'Select a Lead',
+      'first_name': '',
+      'last_name': '',
       'customer_phone': 'N/A',
       'customer_mobile': 'N/A',
       'email': 'N/A',
@@ -59,6 +64,39 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
       'city': 'N/A',
       'state': 'N/A',
     };
+  }
+
+  Future<void> _fetchLeadsList() async {
+    setState(() => _loadingLeads = true);
+    try {
+      final res = await ApiService().post('leads/list', {});
+      if (mounted && res['success'] == true && res['data'] is List) {
+        final list = List<dynamic>.from(res['data']);
+        setState(() {
+          _leadsList = list;
+          if (((_leadData['id'] ?? 0) <= 0) && list.isNotEmpty) {
+            final first = list.first;
+            if (first is Map) {
+              _leadData = Map<String, dynamic>.from(first);
+              _fetchHistory();
+            }
+          }
+        });
+      }
+    } catch (e) {
+      print('Error loading leads list: $e');
+    } finally {
+      if (mounted) setState(() => _loadingLeads = false);
+    }
+  }
+
+  void _selectLead(Map<String, dynamic> lead) {
+    setState(() {
+      _leadData = Map<String, dynamic>.from(lead);
+      _history = [];
+      _error = null;
+    });
+    _fetchHistory();
   }
 
   Future<void> _fetchHistory() async {
@@ -386,9 +424,135 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
   }
 
   String _fullName() {
-    final firstName = _leadData['customer_name'] ?? _leadData['first_name'] ?? '';
+    final name = _leadData['customer_name'] ?? _leadData['name'] ?? '';
+    if (name.isNotEmpty && name != 'Lead Detail') return name;
+    final firstName = _leadData['first_name'] ?? '';
     final lastName = _leadData['last_name'] ?? '';
-    return '$firstName $lastName'.trim();
+    final combined = '$firstName $lastName'.trim();
+    if (combined.isNotEmpty && combined != 'Lead Detail') return combined;
+    return 'Select a Lead';
+  }
+
+  Widget _buildLeadSelectorCard() {
+    if (_loadingLeads && _leadsList.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1E3A5F)),
+            ),
+            SizedBox(width: 10),
+            Text('Loading assigned leads...', style: TextStyle(fontSize: 13, color: Color(0xFF1E3A5F))),
+          ],
+        ),
+      );
+    }
+
+    if (_leadsList.isEmpty) return const SizedBox.shrink();
+
+    final currentId = _leadData['id'];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            spreadRadius: 1,
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.person_search_rounded, color: Color(0xFF1E3A5F), size: 18),
+              const SizedBox(width: 8),
+              const Text(
+                'Select Lead',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E3A5F),
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${_leadsList.length} Leads',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF1E3A5F), fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<dynamic>(
+            value: _leadsList.any((l) => l['id'] == currentId) ? currentId : null,
+            hint: const Text('Choose a lead from the list...', style: TextStyle(fontSize: 13)),
+            isExpanded: true,
+            items: _leadsList.map((l) {
+              final id = l['id'];
+              final name = l['customer_name'] ?? l['first_name'] ?? 'Lead #$id';
+              final phone = l['customer_phone'] ?? l['phone'] ?? l['mobile'] ?? '';
+              final status = (l['status'] ?? 'New').toString();
+              return DropdownMenuItem<dynamic>(
+                value: id,
+                child: Text(
+                  '$name ($phone) - ${status.toUpperCase()}',
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF1E3A5F), fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              );
+            }).toList(),
+            onChanged: (selectedId) {
+              if (selectedId == null) return;
+              final found = _leadsList.firstWhere(
+                (l) => l['id'] == selectedId,
+                orElse: () => null,
+              );
+              if (found != null && found is Map) {
+                _selectLead(Map<String, dynamic>.from(found));
+              }
+            },
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -411,6 +575,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Lead Selector Card (when opened from modules or navigating leads)
+                _buildLeadSelectorCard(),
+
                 // Lead Info Glass Card
                 _buildGlassLeadCard(lead, isPlaceholder, phone),
                 const SizedBox(height: 16),

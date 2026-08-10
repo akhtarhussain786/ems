@@ -153,7 +153,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
           if (isNew && newId > 0) {
             _openLead({
               'id': newId,
-              'customer_name': data['customer_name'],
+              ...data,
               'customer_phone': data['phone'],
               'status': 'new',
             });
