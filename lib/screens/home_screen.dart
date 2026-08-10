@@ -768,6 +768,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         setState(() {
           _profileImagePath = newPath;
         });
+        // Fires once the upload has resolved, so the cached user record now
+        // holds the server path — reload it so this avatar uses it too.
+        _loadUserData();
       },
     ));
 

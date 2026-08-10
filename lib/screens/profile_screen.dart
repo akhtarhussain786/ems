@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/profile_photo_service.dart';
 import '../utils/constants.dart';
 import '../utils/profile_image.dart';
 import 'salary_report_screen.dart';
@@ -15,57 +16,11 @@ import 'late_attendance_report_screen.dart';
 
 // ==================== REPORT SCREENS ====================
 
-class AbsentReportScreen extends StatelessWidget {
-  const AbsentReportScreen({super.key});
+// A placeholder AbsentReportScreen used to live here: it rendered a fixed icon
+// and the words "Absent attendance records", fetched nothing, and was never
+// navigated to. The Absent Report tile opens AttendanceReportScreen(
+// type: ReportType.absent), which is the real one.
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
-      appBar: AppBar(
-        title: const Text('Absent Report'),
-        backgroundColor: const Color(0xFF1E3A5F),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        // Keeps content clear of the system navigation bar
-        top: false,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.cancel_rounded, size: 64, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                'Absent Report',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[700],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Absent attendance records',
-                style: TextStyle(color: Colors.grey[500]),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E3A5F),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Go Back'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 class SettingsScreen extends StatefulWidget {
   final Map<String, dynamic>? userData;
   final String? profileImagePath;
@@ -222,38 +177,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _changePhoto() async {
     try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 500,
-        maxHeight: 500,
-        imageQuality: 80,
-      );
-      if (image == null) return;
+      final result = await ProfilePhotoService.pickAndUpload(_picker);
+      if (result == null || !mounted) return; // cancelled
 
-      final file = File(image.path);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('profile_image_path', image.path);
-      widget.onImageUpdated?.call(image.path);
+      widget.onImageUpdated?.call(result.localPath);
+      _showSnack(result.message, error: !result.success);
 
-      if (mounted) {
-        _showSnack('Photo updated locally. Uploading...');
-      }
-
-      try {
-        final res = await ApiService().updateProfilePhoto(file);
-        if (mounted) {
-          if (res['success'] == true) {
-            _showSnack(res['message'] ?? 'Profile photo uploaded successfully');
-            widget.onDataChanged?.call();
-          } else {
-            _showSnack(res['message'] ?? 'Photo upload failed', error: true);
-          }
-        }
-      } catch (e) {
-        if (mounted) {
-          _showSnack('Photo saved locally, upload failed', error: true);
-        }
-      }
+      if (result.success) widget.onDataChanged?.call();
     } catch (e) {
       if (mounted) _showSnack('Error: $e', error: true);
     }
@@ -829,36 +759,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _pickAndUploadImage() async {
     try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 500,
-        maxHeight: 500,
-        imageQuality: 80,
+      final result = await ProfilePhotoService.pickAndUpload(_picker);
+      if (result == null || !mounted) return; // cancelled
+
+      setState(() {
+        _profileImagePath = result.localPath;
+        // Server copy wins in ProfileImage.resolve, so the avatar switches to
+        // the account's own photo the moment the upload lands.
+        if (result.serverPhoto != null) {
+          _userData['profile_photo'] = result.serverPhoto;
+        }
+      });
+
+      // Told after the upload resolves, so the dashboard reloads the cached
+      // record that now carries the server path.
+      widget.onImageUpdated?.call(result.localPath);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: result.success ? Colors.green : Colors.red,
+        ),
       );
-
-      if (image != null) {
-        final String imagePath = image.path;
-
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('profile_image_path', imagePath);
-
-        setState(() {
-          _profileImagePath = imagePath;
-        });
-
-        if (widget.onImageUpdated != null) {
-          widget.onImageUpdated!(imagePath);
-        }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Profile image updated successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

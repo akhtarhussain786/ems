@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
+import 'lead_detail_screen.dart';
 
 class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
@@ -143,8 +144,20 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       if (mounted) {
         Navigator.pop(context);
         if (res['success'] == true) {
+          final isNew = _editId == null;
           _fetch();
-          _showMsg(_editId != null ? '✅ Lead updated successfully' : '✅ Lead created successfully');
+          _showMsg(isNew ? '✅ Lead created successfully' : '✅ Lead updated successfully');
+
+          // Open the new lead so its details are visible straight away.
+          final newId = int.tryParse('${res['id'] ?? 0}') ?? 0;
+          if (isNew && newId > 0) {
+            _openLead({
+              'id': newId,
+              'customer_name': data['customer_name'],
+              'customer_phone': data['phone'],
+              'status': 'new',
+            });
+          }
         } else {
           _showMsg(res['message'] ?? '❌ Failed');
         }
@@ -209,6 +222,17 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       _fetch();
       _showMsg('✅ Lead deleted successfully');
     }
+  }
+
+  /// Opens the full detail page, which loads the lead's own record along with
+  /// its calls and follow-ups.
+  Future<void> _openLead(Map<String, dynamic> lead) async {
+    HapticFeedback.lightImpact();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => LeadDetailScreen(lead: lead)),
+    );
+    if (mounted) _fetch(); // status may have changed while it was open
   }
 
   void _showHistory(Map<String, dynamic> lead) async {
@@ -663,7 +687,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
   // ==================== GLASS LEAD CARD ====================
   Widget _buildGlassLeadCard(Map<String, dynamic> l, String name, String phone, String status, Color statusColor) {
     return GestureDetector(
-      onTap: () => _showHistory(l),
+      onTap: () => _openLead(l),
       onLongPress: () => _showOptions(l),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
