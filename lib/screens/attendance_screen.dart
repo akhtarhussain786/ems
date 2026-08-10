@@ -24,6 +24,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   bool _loading = false;
   bool _locationLoading = true;
   bool _withinRange = false;
+  bool _isFieldStaff = false; // ✅ New variable
   String? _error;
   String? _photoPath;
   String? _photoBase64;
@@ -53,10 +54,37 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   }
 
   Future<void> _init() async {
+    await _checkFieldStaff(); // ✅ Check field staff first
     await _getLocation();
     await _fetchTodayAttendance();
     if (_debugMode) {
       await _testApiConnection();
+    }
+  }
+
+  // ✅ New: Check if employee is field staff
+  Future<void> _checkFieldStaff() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userJson = prefs.getString(AppConstants.userKey);
+      if (userJson != null) {
+        try {
+          final u = jsonDecode(userJson);
+          setState(() {
+            _isFieldStaff = (u['is_field_staff'] ?? 0) == 1;
+          });
+          print('🟢 Is Field Staff: $_isFieldStaff');
+        } catch (_) {
+          setState(() {
+            _isFieldStaff = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('🔴 Error checking field staff: $e');
+      setState(() {
+        _isFieldStaff = false;
+      });
     }
   }
 
@@ -145,21 +173,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
 
   Future<void> _checkLocation() async {
     try {
-      // Field staff (e.g. Digital Marketing) can check in from anywhere
-      final prefs = await SharedPreferences.getInstance();
-      final userJson = prefs.getString(AppConstants.userKey);
-      bool isFieldStaff = false;
-      if (userJson != null) {
-        try {
-          final u = jsonDecode(userJson);
-          isFieldStaff = (u['is_field_staff'] ?? 0) == 1;
-        } catch (_) {}
-      }
-
-      final res = await ApiService().getOfficeSettings();
-      if (!mounted) return;
-
-      if (isFieldStaff) {
+      // ✅ FIXED: Field staff can check in from anywhere
+      if (_isFieldStaff) {
+        print('🟢 Field Staff: Location validation SKIPPED');
         setState(() {
           _withinRange = true;
           _distance = 0;
@@ -167,6 +183,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         });
         return;
       }
+
+      // Office staff: Check location
+      final res = await ApiService().getOfficeSettings();
+      if (!mounted) return;
 
       if (res['success'] == true) {
         final office = res['data']?['office'];
@@ -246,7 +266,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   }
 
   Future<void> _submit() async {
-    if (!_withinRange) {
+    // ✅ FIXED: Field staff can submit even if outside
+    if (!_withinRange && !_isFieldStaff) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('You are outside office location.'),
@@ -275,6 +296,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       print('🟢 Submitting attendance...');
       print('🟢 CheckIn: ${widget.checkIn}');
       print('🟢 Location: $_latitude, $_longitude');
+      print('🟢 Is Field Staff: $_isFieldStaff');
 
       if (widget.checkIn) {
         response = await ApiService().checkIn(
@@ -301,10 +323,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       if (response['success'] == true) {
         setState(() => _completed = true);
 
+        // ✅ Show different message for field staff
+        final isFieldWork = response['data']?['is_field_work'] ?? 0;
+        String successMsg = widget.checkIn
+            ? (isFieldWork == 1 ? '✅ Field Work Check-in Successful!' : '✅ Check-in Successful!')
+            : '✅ Check-out Successful!';
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              widget.checkIn ? '✅ Check-in successful!' : '✅ Check-out successful!',
+              successMsg,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             backgroundColor: Colors.green,
@@ -409,7 +437,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Animated Success Icon
                 TweenAnimationBuilder(
                   tween: Tween<double>(begin: 0, end: 1),
                   duration: const Duration(milliseconds: 600),
@@ -577,8 +604,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           margin: const EdgeInsets.only(right: 12),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: const [Color(0xFF1E3A5F), Color(0xFF2A5298)],
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)],
             ),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
@@ -727,6 +754,31 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                   color: Color(0xFF1E3A5F),
                 ),
               ),
+              if (_isFieldStaff) ...[
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.verified_rounded, color: Colors.green.shade600, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Field Staff',
+                        style: TextStyle(
+                          color: Colors.green.shade700,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 14),
@@ -806,13 +858,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: _withinRange
+                    colors: (_withinRange || _isFieldStaff)
                         ? [const Color(0xFF1E3A5F).withOpacity(0.1), const Color(0xFF2A5298).withOpacity(0.05)]
                         : [Colors.red.shade50, Colors.red.shade100],
                   ),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: _withinRange ? const Color(0xFF1E3A5F).withOpacity(0.2) : Colors.red.shade200,
+                    color: (_withinRange || _isFieldStaff)
+                        ? const Color(0xFF1E3A5F).withOpacity(0.2)
+                        : Colors.red.shade200,
                     width: 1,
                   ),
                 ),
@@ -821,11 +875,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: _withinRange ? const Color(0xFF1E3A5F) : Colors.red,
+                        color: (_withinRange || _isFieldStaff) ? const Color(0xFF1E3A5F) : Colors.red,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        _withinRange ? Icons.check_rounded : Icons.close_rounded,
+                        (_withinRange || _isFieldStaff) ? Icons.check_rounded : Icons.close_rounded,
                         color: Colors.white,
                         size: 16,
                       ),
@@ -833,11 +887,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        _withinRange
+                        _isFieldStaff
+                            ? '✓ Field Staff - Anywhere Allowed'
+                            : (_withinRange
                             ? '✓ Within office area'
-                            : '✗ Outside office area',
+                            : '✗ Outside office area'),
                         style: TextStyle(
-                          color: _withinRange ? const Color(0xFF1E3A5F) : Colors.red.shade700,
+                          color: (_withinRange || _isFieldStaff) ? const Color(0xFF1E3A5F) : Colors.red.shade700,
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -861,7 +917,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                         const Icon(Icons.straighten_rounded, size: 14, color: Color(0xFF1E3A5F)),
                         const SizedBox(width: 4),
                         Text(
-                          '${_distance.toStringAsFixed(1)} meters',
+                          _isFieldStaff ? 'Field Staff' : '${_distance.toStringAsFixed(1)} meters',
                           style: const TextStyle(
                             color: Color(0xFF1E3A5F),
                             fontWeight: FontWeight.w600,
@@ -896,7 +952,35 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                   ),
                 ],
               ),
-              if (!_withinRange) ...[
+              // ✅ Show field staff info
+              if (_isFieldStaff) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: Colors.green.shade600, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Field Staff: You can check in from anywhere!',
+                          style: TextStyle(
+                            color: Colors.green.shade700,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (!_withinRange && !_isFieldStaff) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -1077,7 +1161,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
               )
                   : Stack(
                 children: [
-                  // Photo displayed via decoration
                   Positioned(
                     bottom: 12,
                     left: 0,
@@ -1176,7 +1259,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
 
   // ==================== SUBMIT BUTTON ====================
   Widget _buildSubmitButton(bool isCheckIn) {
-    final enabled = !_loading && _withinRange && _photoPath != null;
+    // ✅ FIXED: Field staff can submit even if outside
+    final enabled = !_loading && (_withinRange || _isFieldStaff) && _photoPath != null;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -1245,16 +1329,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.info_outline_rounded,
+            _isFieldStaff ? Icons.verified_rounded : Icons.info_outline_rounded,
             size: 14,
-            color: Colors.grey.shade400,
+            color: _isFieldStaff ? Colors.green.shade400 : Colors.grey.shade400,
           ),
           const SizedBox(width: 6),
           Text(
-            'Make sure you are within office location',
+            _isFieldStaff
+                ? 'Field Staff - Anywhere check-in allowed'
+                : 'Make sure you are within office location',
             style: TextStyle(
-              color: Colors.grey.shade500,
+              color: _isFieldStaff ? Colors.green.shade600 : Colors.grey.shade500,
               fontSize: 12,
+              fontWeight: _isFieldStaff ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
         ],
