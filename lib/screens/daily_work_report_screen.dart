@@ -159,27 +159,31 @@ class _DailyWorkReportScreenState extends State<DailyWorkReportScreen> with Sing
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
       floatingActionButton: _buildFAB(),
-      body: _loading
-          ? const Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFF1E3A5F),
-          strokeWidth: 3,
-        ),
-      )
-          : RefreshIndicator(
-        onRefresh: _fetch,
-        color: const Color(0xFF1E3A5F),
-        child: _reports.isEmpty
-            ? _buildEmptyState()
-            : FadeTransition(
-          opacity: _fadeAnimation,
-          child: ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: _reports.length,
-            itemBuilder: (_, i) {
-              final r = _reports[i];
-              return _buildGlassReportCard(r);
-            },
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: _loading
+            ? const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF1E3A5F),
+            strokeWidth: 3,
+          ),
+        )
+            : RefreshIndicator(
+          onRefresh: _fetch,
+          color: const Color(0xFF1E3A5F),
+          child: _reports.isEmpty
+              ? _buildEmptyState()
+              : FadeTransition(
+            opacity: _fadeAnimation,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _reports.length,
+              itemBuilder: (_, i) {
+                final r = _reports[i];
+                return _buildGlassReportCard(r);
+              },
+            ),
           ),
         ),
       ),
@@ -504,7 +508,8 @@ class _DailyWorkReportScreenState extends State<DailyWorkReportScreen> with Sing
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocalState) => Padding(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
+            bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom,
             left: 20,
             right: 20,
             top: 20,

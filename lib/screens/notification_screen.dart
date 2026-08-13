@@ -159,28 +159,32 @@ class _NotificationScreenState extends State<NotificationScreen> with SingleTick
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
-      body: _loading
-          ? _buildLoadingShimmer()
-          : Column(
-        children: [
-          _buildFilterChips(),
-          Expanded(
-            child: filteredNotifs.isEmpty
-                ? _buildEmptyState()
-                : RefreshIndicator(
-              onRefresh: _fetch,
-              color: const Color(0xFF1E3A5F),
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  itemCount: filteredNotifs.length,
-                  itemBuilder: (_, i) => _buildGlassNotificationItem(filteredNotifs[i], i),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: _loading
+            ? _buildLoadingShimmer()
+            : Column(
+          children: [
+            _buildFilterChips(),
+            Expanded(
+              child: filteredNotifs.isEmpty
+                  ? _buildEmptyState()
+                  : RefreshIndicator(
+                onRefresh: _fetch,
+                color: const Color(0xFF1E3A5F),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: filteredNotifs.length,
+                    itemBuilder: (_, i) => _buildGlassNotificationItem(filteredNotifs[i], i),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -706,7 +710,7 @@ class _NotificationScreenState extends State<NotificationScreen> with SingleTick
         minChildSize: 0.3,
         maxChildSize: 0.9,
         expand: false,
-        builder: (_, controller) => Container(
+        builder: (ctx, controller) => Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -718,7 +722,8 @@ class _NotificationScreenState extends State<NotificationScreen> with SingleTick
               ),
             ],
           ),
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.fromLTRB(24, 24, 24,
+              24 + MediaQuery.of(ctx).viewPadding.bottom),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

@@ -188,36 +188,40 @@ class _TravelScreenState extends State<TravelScreen> with SingleTickerProviderSt
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
       floatingActionButton: _buildFAB(),
-      body: _loading
-          ? const Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFF1E3A5F),
-          strokeWidth: 3,
-        ),
-      )
-          : Column(
-        children: [
-          _buildFilterChips(),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _fetch,
-              color: const Color(0xFF1E3A5F),
-              child: filteredTravels.isEmpty
-                  ? _buildEmptyState()
-                  : FadeTransition(
-                opacity: _fadeAnimation,
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: filteredTravels.length,
-                  itemBuilder: (_, i) {
-                    final t = filteredTravels[i];
-                    return _buildGlassTravelCard(t);
-                  },
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: _loading
+            ? const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF1E3A5F),
+            strokeWidth: 3,
+          ),
+        )
+            : Column(
+          children: [
+            _buildFilterChips(),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _fetch,
+                color: const Color(0xFF1E3A5F),
+                child: filteredTravels.isEmpty
+                    ? _buildEmptyState()
+                    : FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: filteredTravels.length,
+                    itemBuilder: (_, i) {
+                      final t = filteredTravels[i];
+                      return _buildGlassTravelCard(t);
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -620,7 +624,8 @@ class _TravelScreenState extends State<TravelScreen> with SingleTickerProviderSt
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocalState) => Padding(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
+            bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom,
             left: 20,
             right: 20,
             top: 20,

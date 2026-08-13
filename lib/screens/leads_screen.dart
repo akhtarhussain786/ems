@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
+import 'lead_detail_screen.dart';
 
 class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
@@ -143,8 +144,20 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       if (mounted) {
         Navigator.pop(context);
         if (res['success'] == true) {
+          final isNew = _editId == null;
           _fetch();
-          _showMsg(_editId != null ? '✅ Lead updated successfully' : '✅ Lead created successfully');
+          _showMsg(isNew ? '✅ Lead created successfully' : '✅ Lead updated successfully');
+
+          // Open the new lead so its details are visible straight away.
+          final newId = int.tryParse('${res['id'] ?? 0}') ?? 0;
+          if (isNew && newId > 0) {
+            _openLead({
+              'id': newId,
+              ...data,
+              'customer_phone': data['phone'],
+              'status': 'new',
+            });
+          }
         } else {
           _showMsg(res['message'] ?? '❌ Failed');
         }
@@ -209,6 +222,17 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       _fetch();
       _showMsg('✅ Lead deleted successfully');
     }
+  }
+
+  /// Opens the full detail page, which loads the lead's own record along with
+  /// its calls and follow-ups.
+  Future<void> _openLead(Map<String, dynamic> lead) async {
+    HapticFeedback.lightImpact();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => LeadDetailScreen(lead: lead)),
+    );
+    if (mounted) _fetch(); // status may have changed while it was open
   }
 
   void _showHistory(Map<String, dynamic> lead) async {
@@ -406,42 +430,46 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
-      body: Column(
-        children: [
-          _buildSearchBar(),
-          _buildFilterChips(),
-          Expanded(
-            child: _loading
-                ? const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF1E3A5F),
-                strokeWidth: 3,
-              ),
-            )
-                : _leads.isEmpty
-                ? _buildEmptyState()
-                : RefreshIndicator(
-              onRefresh: _fetch,
-              color: const Color(0xFF1E3A5F),
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  itemCount: _leads.length,
-                  itemBuilder: (_, i) {
-                    final l = _leads[i];
-                    final name = l['customer_name'] ?? '';
-                    final phone = l['phone'] ?? l['customer_phone'] ?? 'N/A';
-                    final status = l['status'] ?? 'new';
-                    final statusColor = _statusColor(status);
-
-                    return _buildGlassLeadCard(l, name, phone, status, statusColor);
-                  },
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: Column(
+          children: [
+            _buildSearchBar(),
+            _buildFilterChips(),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFF1E3A5F),
+                  strokeWidth: 3,
+                ),
+              )
+                  : _leads.isEmpty
+                  ? _buildEmptyState()
+                  : RefreshIndicator(
+                onRefresh: _fetch,
+                color: const Color(0xFF1E3A5F),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    itemCount: _leads.length,
+                    itemBuilder: (_, i) {
+                      final l = _leads[i];
+                      final name = l['customer_name'] ?? '';
+                      final phone = l['phone'] ?? l['customer_phone'] ?? 'N/A';
+                      final status = l['status'] ?? 'new';
+                      final statusColor = _statusColor(status);
+  
+                      return _buildGlassLeadCard(l, name, phone, status, statusColor);
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       floatingActionButton: _buildFAB(),
     );
@@ -659,7 +687,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
   // ==================== GLASS LEAD CARD ====================
   Widget _buildGlassLeadCard(Map<String, dynamic> l, String name, String phone, String status, Color statusColor) {
     return GestureDetector(
-      onTap: () => _showHistory(l),
+      onTap: () => _openLead(l),
       onLongPress: () => _showOptions(l),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
@@ -842,8 +870,9 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+      builder: (ctx) => Container(
+        padding: EdgeInsets.only(
+            top: 8, bottom: 8 + MediaQuery.of(ctx).viewPadding.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -918,7 +947,8 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocalState) => Padding(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
+            bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom,
             left: 16,
             right: 16,
             top: 16,

@@ -9,6 +9,12 @@ class AppConstants {
   static const String rememberKey = 'remember_login';
   static const String userKey = 'user_data';
   static const String savedEmployeeIdKey = 'saved_employee_id';
+  static const String tokenExpiryKey = 'token_expiry';
+  static const String loginTimestampKey = 'login_timestamp';
+  static const String autoLogoutFlagKey = 'was_auto_logout';
+  static const String autoLogoutReasonKey = 'auto_logout_reason';
+
+  static const String loginRoute = '/login';
 
   static const Duration httpTimeout = Duration(seconds: 15);
 }

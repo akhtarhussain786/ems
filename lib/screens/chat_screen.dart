@@ -162,16 +162,20 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
-      body: _loading
-          ? const Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFF1E3A5F),
-          strokeWidth: 3,
-        ),
-      )
-          : _inChat
-          ? _buildChatView()
-          : _buildConversationList(),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: _loading
+            ? const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF1E3A5F),
+            strokeWidth: 3,
+          ),
+        )
+            : _inChat
+            ? _buildChatView()
+            : _buildConversationList(),
+      ),
     );
   }
 

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/constants.dart';
+import 'session_manager.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -10,72 +10,42 @@ class ApiService {
   ApiService._internal();
 
   final http.Client _client = http.Client();
-  String? _token;
-  DateTime? _tokenExpiryTime;
 
-  // Session configuration
-  static const Duration _sessionTimeout = Duration(minutes: 5);
-  static const String _loginTimestampKey = 'login_timestamp';
-  static const String _authTokenKey = 'auth_token';
-  static const String _userKey = 'user_data';
+  Future<String?> getToken() => SessionManager.instance.getToken();
 
-  Future<String?> getToken() async {
-    // Check if token is expired
-    if (_tokenExpiryTime != null && DateTime.now().isAfter(_tokenExpiryTime!)) {
-      await clearToken();
+  Future<void> setToken(String token, {int? expiresIn}) =>
+      SessionManager.instance.saveSession(token, expiresIn: expiresIn);
+
+  Future<void> clearToken() => SessionManager.instance.clear();
+
+  /// Returns a token that is present and not yet expired, otherwise forces a
+  /// logout. Stops expired sessions before they ever reach the network.
+  Future<String> _requireValidToken() async {
+    final token = await SessionManager.instance.getToken();
+
+    if (token == null || token.isEmpty) {
+      await SessionManager.instance.forceLogout(
+        reason: 'Please login to continue.',
+      );
+      throw UnauthorizedException('No authentication token');
+    }
+
+    if (SessionManager.instance.isExpired) {
+      await SessionManager.instance.forceLogout();
       throw UnauthorizedException('Session expired. Please login again.');
     }
 
-    if (_token != null) return _token;
-
-    final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString(_authTokenKey);
-
-    // Validate session timestamp
-    if (_token != null) {
-      final loginTimestamp = prefs.getString(_loginTimestampKey);
-      if (loginTimestamp != null) {
-        final loginTime = DateTime.parse(loginTimestamp);
-        final difference = DateTime.now().difference(loginTime);
-        if (difference >= _sessionTimeout) {
-          await clearToken();
-          _token = null;
-          throw UnauthorizedException('Session expired after 12 hours. Please login again.');
-        }
-        // Set expiry time
-        _tokenExpiryTime = loginTime.add(_sessionTimeout);
-      }
-    }
-
-    return _token;
+    return token;
   }
 
-  Future<void> setToken(String token) async {
-    _token = token;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_authTokenKey, token);
-
-    // Set token expiry
-    _tokenExpiryTime = DateTime.now().add(_sessionTimeout);
-  }
-
-  Future<void> clearToken() async {
-    _token = null;
-    _tokenExpiryTime = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_authTokenKey);
-    await prefs.remove(_userKey);
-    await prefs.remove(_loginTimestampKey);
-  }
-
-  Map<String, String> _headers({bool auth = true}) {
+  Map<String, String> _headers({bool auth = true, String? token}) {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'Cache-Control': 'no-cache',
     };
-    if (auth && _token != null && _token!.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $_token';
+    if (auth && token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
     }
     return headers;
   }
@@ -94,14 +64,14 @@ class ApiService {
     }
   }
 
+  /// Any 401 — or an explicit `force_logout` from the backend — ends the
+  /// session here, so no individual screen has to remember to handle it.
   Future<Map<String, dynamic>> _handleResponse(http.Response response) async {
     final decoded = _decodeResponse(response);
-
-    // Handle 401 Unauthorized - Token expired
-    if (response.statusCode == 401) {
-      // Clear token and session data
-      await clearToken();
-      throw UnauthorizedException(decoded['message'] ?? 'Session expired. Please login again.');
+    if (response.statusCode == 401 || decoded['force_logout'] == true) {
+      final message = decoded['message'] ?? 'Session expired. Please login again.';
+      await SessionManager.instance.forceLogout(reason: message);
+      throw UnauthorizedException(message);
     }
 
     // Handle 403 Forbidden - Invalid token
@@ -117,15 +87,12 @@ class ApiService {
   // ✅ GET REQUEST with automatic token refresh
   // ============================================================
   Future<Map<String, dynamic>> get(String endpoint) async {
-    final token = await getToken();
-    if (token == null || token.isEmpty) {
-      throw UnauthorizedException('No authentication token found');
-    }
+    final token = await _requireValidToken();
 
     final uri = Uri.parse('${AppConstants.baseUrl}/$endpoint')
         .replace(queryParameters: {'token': token});
 
-    final headers = _headers();
+    final headers = _headers(token: token);
     print('🟢 GET URL: $uri');
 
     try {
@@ -172,11 +139,9 @@ class ApiService {
       }) async {
     Map<String, dynamic> requestData = Map.from(data);
 
+    String? token;
     if (auth) {
-      final token = await getToken();
-      if (token == null || token.isEmpty) {
-        throw UnauthorizedException('No authentication token found');
-      }
+      token = await _requireValidToken();
       requestData['_token'] = token;
     }
 
@@ -188,18 +153,17 @@ class ApiService {
     try {
       var response = await _client.post(
         uri,
-        headers: _headers(auth: auth),
+        headers: _headers(auth: auth, token: token),
         body: jsonEncode(requestData),
       ).timeout(AppConstants.httpTimeout);
 
-      // Handle redirects
       if (response.statusCode == 302 || response.statusCode == 301) {
         final location = response.headers['location'];
         if (location != null) {
           print('🟢 Redirecting to: $location');
           response = await _client.post(
             Uri.parse(location),
-            headers: _headers(auth: auth),
+            headers: _headers(auth: auth, token: token),
             body: jsonEncode(requestData),
           ).timeout(AppConstants.httpTimeout);
         }
@@ -235,24 +199,17 @@ class ApiService {
       File? file, {
         String fileField = 'photo',
       }) async {
-    final token = await getToken();
-    if (token == null || token.isEmpty) {
-      throw UnauthorizedException('No authentication token found');
-    }
+    final token = await _requireValidToken();
 
-    Map<String, String> requestFields = Map.from(fields);
-    requestFields['_token'] = token;
+    final requestFields = Map<String, String>.of(fields)..['_token'] = token;
 
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('${AppConstants.baseUrl}/$endpoint'),
     );
 
-    // Add headers
+    request.headers['Authorization'] = 'Bearer $token';
     request.headers['Accept'] = 'application/json';
-    if (_token != null && _token!.isNotEmpty) {
-      request.headers['Authorization'] = 'Bearer $_token';
-    }
 
     request.fields.addAll(requestFields);
 
@@ -266,7 +223,6 @@ class ApiService {
       var streamedResponse = await request.send().timeout(AppConstants.httpTimeout);
       var response = await http.Response.fromStream(streamedResponse);
 
-      // Handle redirects
       if (response.statusCode == 302 || response.statusCode == 301) {
         final location = response.headers['location'];
         if (location != null) {
@@ -296,12 +252,7 @@ class ApiService {
           : '(empty)';
       print('🟢 Multipart Response: $bodyPreview');
 
-      final decoded = _decodeResponse(response);
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        await clearToken();
-        throw UnauthorizedException(decoded['message'] ?? 'Session expired. Please login again.');
-      }
-      return decoded;
+      return await _handleResponse(response);
     } on SocketException {
       throw Exception('No internet connection');
     } on http.ClientException {
@@ -316,11 +267,7 @@ class ApiService {
   // ✅ PUT REQUEST with session validation
   // ============================================================
   Future<Map<String, dynamic>> put(String endpoint, Map<String, dynamic> data) async {
-    final token = await getToken();
-    if (token == null || token.isEmpty) {
-      throw UnauthorizedException('No authentication token found');
-    }
-
+    final token = await _requireValidToken();
     Map<String, dynamic> requestData = Map.from(data);
     requestData['_token'] = token;
 
@@ -329,18 +276,17 @@ class ApiService {
     try {
       var response = await _client.put(
         uri,
-        headers: _headers(),
+        headers: _headers(token: token),
         body: jsonEncode(requestData),
       ).timeout(AppConstants.httpTimeout);
 
-      // Handle redirects
       if (response.statusCode == 302 || response.statusCode == 301) {
         final location = response.headers['location'];
         if (location != null) {
           print('🟢 Redirecting to: $location');
           response = await _client.put(
             Uri.parse(location),
-            headers: _headers(),
+            headers: _headers(token: token),
             body: jsonEncode(requestData),
           ).timeout(AppConstants.httpTimeout);
         }
@@ -368,12 +314,7 @@ class ApiService {
         'remember': remember,
       }, auth: false);
 
-      // Store login timestamp for session tracking
       if (response['success'] == true) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_loginTimestampKey, DateTime.now().toIso8601String());
-
-        // Extract and store token if present in response
         if (response['data'] != null && response['data']['token'] != null) {
           await setToken(response['data']['token']);
         }
@@ -385,49 +326,13 @@ class ApiService {
     }
   }
 
-  // ============================================================
-  // ✅ SESSION MANAGEMENT
-  // ============================================================
-
-  Future<bool> isSessionValid() async {
+  Future<void> logout() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final loginTimestamp = prefs.getString(_loginTimestampKey);
-      final token = prefs.getString(_authTokenKey);
-
-      if (loginTimestamp == null || token == null) {
-        return false;
-      }
-
-      final loginTime = DateTime.parse(loginTimestamp);
-      final difference = DateTime.now().difference(loginTime);
-
-      return difference < _sessionTimeout;
-    } catch (e) {
-      return false;
+      await post('auth/logout', {});
+    } catch (_) {
+      // An expired or unreachable session still has to log out locally.
     }
-  }
-
-  Future<Duration> getRemainingSessionTime() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final loginTimestamp = prefs.getString(_loginTimestampKey);
-
-      if (loginTimestamp == null) {
-        return Duration.zero;
-      }
-
-      final loginTime = DateTime.parse(loginTimestamp);
-      final difference = DateTime.now().difference(loginTime);
-
-      if (difference >= _sessionTimeout) {
-        return Duration.zero;
-      }
-
-      return _sessionTimeout - difference;
-    } catch (e) {
-      return Duration.zero;
-    }
+    await clearToken();
   }
 
   // ============================================================
@@ -530,7 +435,7 @@ class ApiService {
     if (!await file.exists()) {
       throw Exception('File does not exist');
     }
-    return postMultipart('employee/update', fields, file,
+    return postMultipart('employee/update', Map<String, String>.of(fields), file,
         fileField: 'profile_photo');
   }
 

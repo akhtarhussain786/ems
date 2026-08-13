@@ -13,7 +13,10 @@ class LeadDetailScreen extends StatefulWidget {
 
 class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerProviderStateMixin {
   List<dynamic> _history = [];
+  List<dynamic> _leadsList = [];
+  bool _loadingLeads = false;
   bool _loading = true;
+  String? _error;
   String _callStatus = 'No Answer';
   DateTime? _followUpDate;
   late Map<String, dynamic> _leadData;
@@ -31,7 +34,10 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _leadData = widget.lead ?? _getDefaultLead();
-    _fetchHistory();
+    _fetchLeadsList();
+    if ((_leadData['id'] ?? 0) > 0) {
+      _fetchHistory();
+    }
     _animationController.forward();
   }
 
@@ -44,9 +50,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
   Map<String, dynamic> _getDefaultLead() {
     return {
       'id': 0,
-      'customer_name': 'Lead Detail',
-      'first_name': 'Lead',
-      'last_name': 'Detail',
+      'customer_name': 'Select a Lead',
+      'first_name': '',
+      'last_name': '',
       'customer_phone': 'N/A',
       'customer_mobile': 'N/A',
       'email': 'N/A',
@@ -60,16 +66,98 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
     };
   }
 
-  Future<void> _fetchHistory() async {
-    setState(() => _loading = true);
+  Future<void> _fetchLeadsList() async {
+    setState(() => _loadingLeads = true);
     try {
-      final leadId = _leadData['id'] ?? 0;
-      if (leadId > 0) {
-        final res = await ApiService().post('leads/history', {'lead_id': leadId});
-        if (mounted && res['success'] == true) setState(() => _history = res['data'] ?? []);
+      final res = await ApiService().post('leads/list', {});
+      if (mounted && res['success'] == true && res['data'] is List) {
+        final list = List<dynamic>.from(res['data']);
+        setState(() {
+          _leadsList = list;
+          if (((_leadData['id'] ?? 0) <= 0) && list.isNotEmpty) {
+            final first = list.first;
+            if (first is Map) {
+              _leadData = Map<String, dynamic>.from(first);
+              _fetchHistory();
+            }
+          }
+        });
       }
-    } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      print('Error loading leads list: $e');
+    } finally {
+      if (mounted) setState(() => _loadingLeads = false);
+    }
+  }
+
+  void _selectLead(Map<String, dynamic> lead) {
+    setState(() {
+      _leadData = Map<String, dynamic>.from(lead);
+      _history = [];
+      _error = null;
+    });
+    _fetchHistory();
+  }
+
+  Future<void> _fetchHistory() async {
+    final leadId = int.tryParse('${_leadData['id'] ?? 0}') ?? 0;
+    if (leadId <= 0) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final res = await ApiService().post('leads/history', {'lead_id': leadId});
+      if (!mounted) return;
+
+      if (res['success'] != true) {
+        // The API scopes a lead to its creator, its telecaller and admins, so a
+        // miss here means this user is not entitled to it.
+        setState(() => _error = res['message']?.toString() ?? 'Lead not found');
+        return;
+      }
+
+      // `data` is an object of {lead, calls, follow_ups} — the previous code
+      // assigned the whole thing to the history List, which threw a TypeError
+      // that a bare catch swallowed, so history was always empty.
+      final data = res['data'];
+      if (data is! Map) return;
+
+      setState(() {
+        final lead = data['lead'];
+        if (lead is Map) {
+          // Server copy wins: it carries the fields the list view never loads.
+          _leadData = {..._leadData, ...Map<String, dynamic>.from(lead)};
+        }
+        _history = _mergeActivity(data['calls'], data['follow_ups']);
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not load this lead');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Calls and follow-ups in one newest-first list, tagged so the timeline can
+  /// tell them apart.
+  List<dynamic> _mergeActivity(dynamic calls, dynamic followUps) {
+    final merged = <Map<String, dynamic>>[];
+
+    for (final c in (calls is List ? calls : const [])) {
+      if (c is Map) merged.add({...Map<String, dynamic>.from(c), 'type': 'call'});
+    }
+    for (final f in (followUps is List ? followUps : const [])) {
+      if (f is Map) merged.add({...Map<String, dynamic>.from(f), 'type': 'follow_up'});
+    }
+
+    merged.sort((a, b) =>
+        '${b['created_at'] ?? ''}'.compareTo('${a['created_at'] ?? ''}'));
+    return merged;
   }
 
   // ==================== PHONE CALL FUNCTION ====================
@@ -336,9 +424,135 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
   }
 
   String _fullName() {
-    final firstName = _leadData['customer_name'] ?? _leadData['first_name'] ?? '';
+    final name = _leadData['customer_name'] ?? _leadData['name'] ?? '';
+    if (name.isNotEmpty && name != 'Lead Detail') return name;
+    final firstName = _leadData['first_name'] ?? '';
     final lastName = _leadData['last_name'] ?? '';
-    return '$firstName $lastName'.trim();
+    final combined = '$firstName $lastName'.trim();
+    if (combined.isNotEmpty && combined != 'Lead Detail') return combined;
+    return 'Select a Lead';
+  }
+
+  Widget _buildLeadSelectorCard() {
+    if (_loadingLeads && _leadsList.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1E3A5F)),
+            ),
+            SizedBox(width: 10),
+            Text('Loading assigned leads...', style: TextStyle(fontSize: 13, color: Color(0xFF1E3A5F))),
+          ],
+        ),
+      );
+    }
+
+    if (_leadsList.isEmpty) return const SizedBox.shrink();
+
+    final currentId = _leadData['id'];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            spreadRadius: 1,
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.person_search_rounded, color: Color(0xFF1E3A5F), size: 18),
+              const SizedBox(width: 8),
+              const Text(
+                'Select Lead',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E3A5F),
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${_leadsList.length} Leads',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF1E3A5F), fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<dynamic>(
+            value: _leadsList.any((l) => l['id'] == currentId) ? currentId : null,
+            hint: const Text('Choose a lead from the list...', style: TextStyle(fontSize: 13)),
+            isExpanded: true,
+            items: _leadsList.map((l) {
+              final id = l['id'];
+              final name = l['customer_name'] ?? l['first_name'] ?? 'Lead #$id';
+              final phone = l['customer_phone'] ?? l['phone'] ?? l['mobile'] ?? '';
+              final status = (l['status'] ?? 'New').toString();
+              return DropdownMenuItem<dynamic>(
+                value: id,
+                child: Text(
+                  '$name ($phone) - ${status.toUpperCase()}',
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF1E3A5F), fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              );
+            }).toList(),
+            onChanged: (selectedId) {
+              if (selectedId == null) return;
+              final found = _leadsList.firstWhere(
+                (l) => l['id'] == selectedId,
+                orElse: () => null,
+              );
+              if (found != null && found is Map) {
+                _selectLead(Map<String, dynamic>.from(found));
+              }
+            },
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -350,27 +564,39 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(isPlaceholder),
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Lead Info Glass Card
-              _buildGlassLeadCard(lead, isPlaceholder, phone),
-              const SizedBox(height: 16),
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Lead Selector Card (when opened from modules or navigating leads)
+                _buildLeadSelectorCard(),
 
-              if (!isPlaceholder) ...[
-                // Log Call Section
-                _buildGlassLogCallCard(),
+                // Lead Info Glass Card
+                _buildGlassLeadCard(lead, isPlaceholder, phone),
                 const SizedBox(height: 16),
 
-                // Activity History
-                _buildGlassHistoryCard(),
+                if (_error != null) ...[
+                  _buildErrorNotice(_error!),
+                  const SizedBox(height: 16),
+                ],
+  
+                if (!isPlaceholder) ...[
+                  // Log Call Section
+                  _buildGlassLogCallCard(),
+                  const SizedBox(height: 16),
+  
+                  // Activity History
+                  _buildGlassHistoryCard(),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -601,6 +827,10 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
           // Info Grid
           _buildInfoGrid(lead),
 
+          // Free-text fields, too long for the two-column grid
+          _buildLongField('Requirement', lead['requirement']),
+          _buildLongField('Notes', lead['notes']),
+
           // Action Buttons for Call & WhatsApp
           if (!isPlaceholder) ...[
             const SizedBox(height: 16),
@@ -632,15 +862,111 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
   }
 
   // ==================== INFO GRID ====================
+  /// Trimmed string for a field, or null when the value is absent/blank so the
+  /// grid can leave it out rather than showing a column of "N/A".
+  String? _val(dynamic value) {
+    if (value == null) return null;
+    final s = value.toString().trim();
+    if (s.isEmpty || s == 'null') return null;
+    return s;
+  }
+
+  String? _person(dynamic first, dynamic last) {
+    final name = '${first ?? ''} ${last ?? ''}'.trim();
+    return name.isEmpty ? null : name;
+  }
+
+  /// Shown when the lead could not be loaded — most often because it belongs to
+  /// someone else, since the API scopes leads to creator, telecaller and admin.
+  Widget _buildErrorNotice(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline_rounded, color: Colors.orange, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 13, color: Colors.orange.shade900),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Full-width block for free text. Renders nothing when the field is empty.
+  Widget _buildLongField(String label, dynamic value) {
+    final text = _val(value);
+    if (text == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E3A5F).withOpacity(0.04),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 9,
+                color: Colors.grey[500],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              text,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF1E3A5F),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildInfoGrid(Map<String, dynamic> lead) {
+    final budget = _val(lead['budget']);
+
+    // Everything the create form captures, so nothing entered is invisible.
+    final candidates = <String, String?>{
+      'Email': _val(lead['email']) ?? _val(lead['customer_email']),
+      'Company': _val(lead['company_name']),
+      'City': _val(lead['city']),
+      'Source': _val(lead['lead_source']) ?? _val(lead['source']),
+      'Campaign': _val(lead['campaign_name']),
+      'Priority': _val(lead['priority']),
+      'Budget': budget == null ? null : '₹$budget',
+      'Status': _val(lead['status']),
+      'Created by': _person(lead['creator_first'], lead['creator_last']),
+      'Assigned to': _person(lead['assigned_first'], lead['assigned_last']),
+      'Follow-up': _val(lead['follow_up_date']),
+      'Created': _val(lead['created_at']),
+    };
+
     final items = [
-      {'label': 'Email', 'value': lead['email'] ?? 'N/A'},
-      {'label': 'Course', 'value': lead['course_interested'] ?? 'N/A'},
-      {'label': 'Source', 'value': lead['lead_source'] ?? lead['source'] ?? 'N/A'},
-      {'label': 'Priority', 'value': lead['priority'] ?? 'N/A'},
-      {'label': 'City', 'value': lead['city'] ?? 'N/A'},
-      {'label': 'State', 'value': lead['state'] ?? 'N/A'},
+      for (final entry in candidates.entries)
+        if (entry.value != null) {'label': entry.key, 'value': entry.value!},
     ];
+
+    if (items.isEmpty) return const SizedBox.shrink();
 
     return GridView.builder(
       shrinkWrap: true,

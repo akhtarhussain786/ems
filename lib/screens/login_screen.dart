@@ -22,23 +22,12 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   bool _loading = false;
   bool _obscurePassword = true;
 
-  // Auto-logout timer
-  Timer? _autoLogoutTimer;
-  Timer? _sessionCheckTimer;
-  static const Duration _autoLogoutDuration = Duration(minutes: 5);
-  static const Duration _sessionCheckInterval = Duration(minutes: 1);
-
-  // Track last interaction time
-  DateTime? _lastInteractionTime;
-  bool _isSessionExpired = false;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadSavedCredentials();
     _checkAndHandleAutoLogout();
-    _startSessionCheckTimer();
   }
 
   @override
@@ -46,75 +35,20 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _employeeIdController.dispose();
     _passwordController.dispose();
-    _autoLogoutTimer?.cancel();
-    _sessionCheckTimer?.cancel();
     super.dispose();
   }
 
-  // ✅ Lifecycle management - handle app background/foreground
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _checkSessionOnResume();
-    }
-  }
-
-  // ✅ Check session when app resumes
-  Future<void> _checkSessionOnResume() async {
-    final prefs = await SharedPreferences.getInstance();
-    final loginTimestamp = prefs.getString('login_timestamp');
-
-    if (loginTimestamp != null) {
-      final loginTime = DateTime.parse(loginTimestamp);
-      final currentTime = DateTime.now();
-      final difference = currentTime.difference(loginTime);
-
-      if (difference >= _autoLogoutDuration) {
-        await _performAutoLogout();
-        return;
-      }
-
-      // Reset timer with remaining time
-      final remainingTime = _autoLogoutDuration - difference;
-      _startAutoLogoutTimer(remainingTime);
-    }
-  }
-
-  // ✅ Check if user was auto-logged out and show message
+  // Check if the user was kicked out by an expired session and explain why
   void _checkAndHandleAutoLogout() async {
     final prefs = await SharedPreferences.getInstance();
-    final wasAutoLogout = prefs.getBool('was_auto_logout') ?? false;
-    final logoutReason = prefs.getString('logout_reason') ?? 'Session expired';
+    final wasAutoLogout = prefs.getBool(AppConstants.autoLogoutFlagKey) ?? false;
 
     if (wasAutoLogout) {
-      await prefs.remove('was_auto_logout');
-      await prefs.remove('logout_reason');
+      final reason = prefs.getString(AppConstants.autoLogoutReasonKey);
+      await prefs.remove(AppConstants.autoLogoutFlagKey);
+      await prefs.remove(AppConstants.autoLogoutReasonKey);
       if (mounted) {
-        _showInfo('🔐 $logoutReason. Please login again for security.');
-      }
-    }
-  }
-
-  // ✅ Periodic session check
-  void _startSessionCheckTimer() {
-    _sessionCheckTimer?.cancel();
-    _sessionCheckTimer = Timer.periodic(_sessionCheckInterval, (timer) async {
-      await _checkSessionStatus();
-    });
-  }
-
-  Future<void> _checkSessionStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final loginTimestamp = prefs.getString('login_timestamp');
-
-    if (loginTimestamp != null) {
-      final loginTime = DateTime.parse(loginTimestamp);
-      final currentTime = DateTime.now();
-      final difference = currentTime.difference(loginTime);
-
-      if (difference >= _autoLogoutDuration && !_isSessionExpired) {
-        _isSessionExpired = true;
-        await _performAutoLogout();
+        _showInfo('🔐 ${reason ?? 'Session expired. Please login again.'}');
       }
     }
   }
@@ -198,8 +132,16 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
           return;
         }
 
-        await ApiService().setToken(token);
-        FCMService().syncTokenWithBackend();
+        // expires_in is a fallback; the JWT's own exp claim takes precedence
+        final expiresIn = response['expires_in'] is int
+            ? response['expires_in'] as int
+            : int.tryParse('${response['expires_in']}');
+        await ApiService().setToken(token, expiresIn: expiresIn);
+        try {
+          await FCMService().syncTokenWithBackend();
+        } catch (e) {
+          debugPrint('FCM token sync error: $e');
+        }
 
         final prefs = await SharedPreferences.getInstance();
 
@@ -215,17 +157,12 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
         }
 
         await prefs.setString(AppConstants.userKey, jsonEncode(userData));
-
-        // ✅ Save login timestamp with milliseconds for accuracy
-        await prefs.setString('login_timestamp', DateTime.now().toIso8601String());
-        await prefs.remove('was_auto_logout');
-        await prefs.remove('logout_reason');
-
-        // ✅ Reset session expired flag
-        _isSessionExpired = false;
-
-        // ✅ Start auto-logout timer with full duration
-        _startAutoLogoutTimer(_autoLogoutDuration);
+        await prefs.setString(
+          AppConstants.loginTimestampKey,
+          DateTime.now().toIso8601String(),
+        );
+        await prefs.remove(AppConstants.autoLogoutFlagKey);
+        await prefs.remove(AppConstants.autoLogoutReasonKey);
 
         if (!mounted) return;
 
@@ -250,69 +187,6 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       if (mounted) setState(() => _loading = false);
     }
   }
-
-  // ✅ Start auto-logout timer with configurable duration
-  void _startAutoLogoutTimer([Duration? duration]) {
-    _autoLogoutTimer?.cancel();
-    final timerDuration = duration ?? _autoLogoutDuration;
-
-    _autoLogoutTimer = Timer(timerDuration, () {
-      _performAutoLogout();
-    });
-  }
-
-  // ✅ Enhanced auto-logout with proper cleanup
-  Future<void> _performAutoLogout() async {
-    // Prevent multiple logout calls
-    if (_isSessionExpired) return;
-    _isSessionExpired = true;
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // ✅ Save logout reason for display
-      await prefs.setBool('was_auto_logout', true);
-      await prefs.setString('logout_reason', 'Auto-logged out after 12 hours for security');
-
-      // ✅ Clear all session data
-      await ApiService().clearToken();
-      await prefs.remove(AppConstants.userKey);
-      await prefs.remove('login_timestamp');
-      await prefs.remove('auth_token');
-
-      // ✅ Cancel timers
-      _autoLogoutTimer?.cancel();
-      _sessionCheckTimer?.cancel();
-
-      if (mounted) {
-        _showInfo('🔐 Auto-logged out after 12 hours for security.');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
-      }
-    } catch (e) {
-      // Silent error handling with fallback
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
-      }
-    }
-  }
-
-  // ✅ Refresh timer on user interaction with proper reset
-  void _refreshAutoLogoutTimer() {
-    _lastInteractionTime = DateTime.now();
-    _autoLogoutTimer?.cancel();
-    _startAutoLogoutTimer(_autoLogoutDuration);
-  }
-
-  void _onUserInteraction() {
-    _refreshAutoLogoutTimer();
-  }
-
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -382,7 +256,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
               vertical: 20,
             ),
             child: GestureDetector(
-              onTap: _onUserInteraction,
+              onTap: () => FocusScope.of(context).unfocus(),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -659,7 +533,6 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                                 color: Colors.white,
                                 fontSize: 16,
                               ),
-                              onTap: _onUserInteraction,
                               decoration: InputDecoration(
                                 labelText: 'Employee ID',
                                 hintText: 'Enter your employee ID',
@@ -730,7 +603,6 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                                 color: Colors.white,
                                 fontSize: 16,
                               ),
-                              onTap: _onUserInteraction,
                               decoration: InputDecoration(
                                 labelText: 'Password',
                                 hintText: 'Enter your password',
@@ -757,7 +629,6 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                                     size: 22,
                                   ),
                                   onPressed: () {
-                                    _onUserInteraction();
                                     setState(
                                           () => _obscurePassword = !_obscurePassword,
                                     );
@@ -801,7 +672,6 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                             children: [
                               GestureDetector(
                                 onTap: () {
-                                  _onUserInteraction();
                                   setState(() => _remember = !_remember);
                                 },
                                 child: Row(
@@ -845,7 +715,6 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                               Flexible(
                                 child: GestureDetector(
                                   onTap: () {
-                                    _onUserInteraction();
                                     _showInfo('📞 Please contact admin for password reset assistance.');
                                   },
                                   child: Container(

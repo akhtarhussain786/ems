@@ -214,38 +214,42 @@ class _MeetingScreenState extends State<MeetingScreen> with SingleTickerProvider
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(),
-      body: _loading
-          ? const Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFF1E3A5F),
-          strokeWidth: 3,
-        ),
-      )
-          : Column(
-        children: [
-          _buildFilterChips(),
-          Expanded(
-            child: _error != null
-                ? _buildErrorState()
-                : RefreshIndicator(
-              onRefresh: _fetch,
-              color: const Color(0xFF1E3A5F),
-              child: filteredMeetings.isEmpty
-                  ? _buildEmptyState()
-                  : FadeTransition(
-                opacity: _fadeAnimation,
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: filteredMeetings.length,
-                  itemBuilder: (_, i) {
-                    final m = filteredMeetings[i];
-                    return _buildGlassMeetingCard(m);
-                  },
+      body: SafeArea(
+        // Keeps content clear of the system navigation bar
+        top: false,
+        child: _loading
+            ? const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF1E3A5F),
+            strokeWidth: 3,
+          ),
+        )
+            : Column(
+          children: [
+            _buildFilterChips(),
+            Expanded(
+              child: _error != null
+                  ? _buildErrorState()
+                  : RefreshIndicator(
+                onRefresh: _fetch,
+                color: const Color(0xFF1E3A5F),
+                child: filteredMeetings.isEmpty
+                    ? _buildEmptyState()
+                    : FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: filteredMeetings.length,
+                    itemBuilder: (_, i) {
+                      final m = filteredMeetings[i];
+                      return _buildGlassMeetingCard(m);
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -799,8 +803,9 @@ class _MeetingScreenState extends State<MeetingScreen> with SingleTickerProvider
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(20),
+      builder: (ctx) => Container(
+        padding: EdgeInsets.fromLTRB(20, 20, 20,
+            20 + MediaQuery.of(ctx).viewPadding.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
