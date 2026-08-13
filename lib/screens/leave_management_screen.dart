@@ -81,22 +81,22 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
       floatingActionButton: _buildFAB(),
       body: _loading
           ? const Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFF1E3A5F),
-          strokeWidth: 3,
-        ),
-      )
+              child: CircularProgressIndicator(
+                color: Color(0xFF1E3A5F),
+                strokeWidth: 3,
+              ),
+            )
           : Column(
-        children: [
-          _buildTabRow(),
-          Expanded(
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: _tabIndex == 0 ? _buildLeaveList() : _buildBalance(),
+              children: [
+                _buildTabRow(),
+                Expanded(
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: _tabIndex == 0 ? _buildLeaveList() : _buildBalance(),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -118,30 +118,18 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
       title: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withOpacity(0.12),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.1),
-                width: 1,
-              ),
             ),
-            child: Image.asset(
-              'assets/images/logo25.png',
-              height: 32,
-              width: 32,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) {
-                return const Icon(
-                  Icons.event_note_rounded,
-                  color: Colors.white,
-                  size: 24,
-                );
-              },
+            child: const Icon(
+              Icons.time_to_leave_rounded,
+              color: Colors.white,
+              size: 20,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -161,7 +149,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                 ),
               ),
               Text(
-                'Leave Management',
+                'Leave Management System',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.6),
                   fontSize: 9,
@@ -175,14 +163,10 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
       ),
       actions: [
         Container(
-          margin: const EdgeInsets.only(right: 4),
+          margin: const EdgeInsets.only(right: 8),
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.1),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.1),
-              width: 1,
-            ),
           ),
           child: IconButton(
             onPressed: () {
@@ -194,11 +178,8 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
               color: Colors.white,
               size: 22,
             ),
-            padding: const EdgeInsets.all(10),
-            constraints: const BoxConstraints(),
           ),
         ),
-        const SizedBox(width: 4),
       ],
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
@@ -211,7 +192,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
 
   // ==================== FLOATING ACTION BUTTON ====================
   Widget _buildFAB() {
-    return FloatingActionButton(
+    return FloatingActionButton.extended(
       onPressed: () {
         HapticFeedback.mediumImpact();
         _showApplyForm(context);
@@ -219,8 +200,11 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
       backgroundColor: const Color(0xFF1E3A5F),
       foregroundColor: Colors.white,
       elevation: 4,
-      shape: const CircleBorder(),
-      child: const Icon(Icons.add_rounded, size: 28),
+      icon: const Icon(Icons.add_rounded, size: 24),
+      label: const Text(
+        'Apply Leave',
+        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      ),
     );
   }
 
@@ -246,7 +230,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
             child: _buildGlassTab('My Leaves (${_leaves.length})', 0),
           ),
           Expanded(
-            child: _buildGlassTab('Balance (${_balances.where((b) => (b['total'] ?? 0) > 0).length})', 1),
+            child: _buildGlassTab('Leave Balances', 1),
           ),
         ],
       ),
@@ -280,124 +264,247 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
     );
   }
 
-  // ==================== LEAVE LIST ====================
+  // ==================== LEAVE LIST WITH BALANCE SUMMARY ====================
   Widget _buildLeaveList() {
-    if (_leaves.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.event_note_rounded,
-        message: 'No leaves applied yet',
-        subMessage: 'Tap + to apply for leave',
-      );
-    }
-
     return RefreshIndicator(
       onRefresh: _fetch,
       color: const Color(0xFF1E3A5F),
-      child: ListView.builder(
+      child: ListView(
         padding: const EdgeInsets.all(12),
-        itemCount: _leaves.length,
-        itemBuilder: (_, i) {
-          final l = _leaves[i];
-          final status = l['status'] ?? 'Pending';
-          final statusColor = _statusColor(status);
-          final statusIcon = _statusIcon(status);
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.08),
-                  spreadRadius: 1,
-                  blurRadius: 12,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.all(14),
-              leading: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  statusIcon,
-                  color: statusColor,
-                  size: 24,
-                ),
-              ),
-              title: Text(
-                l['leave_type'] ?? '',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: Color(0xFF1E3A5F),
-                ),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 2),
-                  Text(
-                    '${l['start_date'] ?? ''} → ${l['end_date'] ?? ''}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${l['total_days'] ?? 0} day(s)',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  status.toUpperCase(),
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              onTap: () => _showLeaveDetails(l),
-            ),
-          );
-        },
+        children: [
+          _buildBalanceSummaryCard(),
+          const SizedBox(height: 12),
+          if (_leaves.isEmpty)
+            _buildEmptyState(
+              icon: Icons.event_note_rounded,
+              message: 'No leaves applied yet',
+              subMessage: 'Tap Apply Leave to submit a request',
+            )
+          else
+            ..._leaves.map((l) => _buildLeaveCard(l)),
+        ],
       ),
     );
   }
 
-  // ==================== BALANCE ====================
-  Widget _buildBalance() {
-    final availableBalances = _balances.where((b) => (b['total'] ?? 0) > 0).toList();
+  // ==================== BALANCE SUMMARY CARD ====================
+  Widget _buildBalanceSummaryCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1E3A5F).withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.account_balance_wallet_rounded, color: Colors.white70, size: 18),
+              SizedBox(width: 6),
+              Text(
+                'Leave Balance Summary (Annual)',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _balances.map((b) {
+                final type = b['leave_type'] ?? '';
+                final remaining = b['remaining'] ?? 0;
+                final allotted = b['allotted'] ?? 0;
+                final used = b['used'] ?? 0;
 
-    if (availableBalances.isEmpty) {
+                return Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.2)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        type,
+                        style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            '$remaining',
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            ' / $allotted left',
+                            style: const TextStyle(color: Colors.white60, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        'Used: $used',
+                        style: const TextStyle(color: Colors.white54, fontSize: 9),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLeaveCard(Map<String, dynamic> l) {
+    final status = l['status'] ?? 'Pending';
+    final statusColor = _statusColor(status);
+    final days = l['total_days'] ?? 1;
+
+    return GestureDetector(
+      onTap: () => _showLeaveDetails(l),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey[200]!),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E3A5F).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    l['leave_type'] ?? 'Leave',
+                    style: const TextStyle(
+                      color: Color(0xFF1E3A5F),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(_statusIcon(status), color: statusColor, size: 12),
+                      const SizedBox(width: 4),
+                      Text(
+                        status,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.date_range_rounded, size: 16, color: Colors.grey),
+                const SizedBox(width: 6),
+                Text(
+                  '${l['start_date']}  →  ${l['end_date']}',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '$days day(s)',
+                    style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11),
+                  ),
+                ),
+              ],
+            ),
+            if (l['reason'] != null && l['reason'].toString().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Reason: ${l['reason']}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.grey[700], fontSize: 12),
+              ),
+            ],
+            if (l['remarks'] != null && l['remarks'].toString().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: status == 'Rejected' ? Colors.red.withOpacity(0.05) : Colors.green.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: status == 'Rejected' ? Colors.red.withOpacity(0.2) : Colors.green.withOpacity(0.2),
+                  ),
+                ),
+                child: Text(
+                  'Admin Remarks: ${l['remarks']}',
+                  style: TextStyle(
+                    color: status == 'Rejected' ? Colors.red[700] : Colors.green[700],
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==================== BALANCE TAB ====================
+  Widget _buildBalance() {
+    if (_balances.isEmpty) {
       return _buildEmptyState(
-        icon: Icons.analytics_rounded,
-        message: 'No balance data',
-        subMessage: 'No leave balances available',
+        icon: Icons.account_balance_wallet_rounded,
+        message: 'No leave balances recorded',
+        subMessage: 'Pull down to refresh balances',
       );
     }
 
@@ -406,76 +513,85 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
       color: const Color(0xFF1E3A5F),
       child: ListView.builder(
         padding: const EdgeInsets.all(12),
-        itemCount: availableBalances.length,
+        itemCount: _balances.length,
         itemBuilder: (_, i) {
-          final b = availableBalances[i];
-          final total = b['total'] ?? 0;
+          final b = _balances[i];
+          final type = b['leave_type'] ?? '';
+          final allotted = b['allotted'] ?? 0;
           final used = b['used'] ?? 0;
           final remaining = b['remaining'] ?? 0;
 
           return Container(
             margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey[200]!),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withOpacity(0.08),
-                  spreadRadius: 1,
-                  blurRadius: 12,
-                  offset: const Offset(0, 3),
+                  color: Colors.grey.withOpacity(0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)],
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.event_available_rounded,
+                    color: Color(0xFF1E3A5F),
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        type,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Color(0xFF1E3A5F),
                         ),
-                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
-                        Icons.event_note_rounded,
-                        color: Colors.white,
-                        size: 18,
+                      const SizedBox(height: 4),
+                      Text(
+                        'Allotted: $allotted days  •  Used: $used days',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      b['leave_type'] ?? '',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Color(0xFF1E3A5F),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildBalanceItem('Total', total.toString(), Colors.blue),
-                    _buildBalanceItem('Used', used.toString(), Colors.orange),
-                    _buildBalanceItem('Remaining', remaining.toString(), Colors.green),
-                  ],
-                ),
-                // Progress bar
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: total > 0 ? used / total : 0,
-                    backgroundColor: Colors.grey[200],
-                    color: Colors.orange,
-                    minHeight: 6,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '$remaining',
+                        style: const TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      const Text(
+                        'Remaining',
+                        style: TextStyle(color: Colors.green, fontSize: 9, fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -483,29 +599,6 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
           );
         },
       ),
-    );
-  }
-
-  Widget _buildBalanceItem(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-            color: color,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.grey[500],
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
     );
   }
 
@@ -515,40 +608,20 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon,
-            size: 64,
-            color: Colors.grey[300],
-          ),
+          Icon(icon, size: 64, color: Colors.grey[300]),
           const SizedBox(height: 12),
-          Text(
-            message,
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          Text(message, style: TextStyle(color: Colors.grey[400], fontSize: 16, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
-          Text(
-            subMessage,
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 13,
-            ),
-          ),
+          Text(subMessage, style: TextStyle(color: Colors.grey[400], fontSize: 13)),
         ],
       ),
     );
   }
 
-  // ==================== LEAVE DETAILS ====================
+  // ==================== LEAVE DETAILS MODAL ====================
   void _showLeaveDetails(Map<String, dynamic> l) async {
     HapticFeedback.lightImpact();
-    final res = await ApiService().post('leaves/details', {'id': l['id']});
-    if (!mounted) return;
-    final data = res['success'] == true ? res['data'] : l;
-    final status = data['status'] ?? 'Pending';
+    final status = l['status'] ?? 'Pending';
     final statusColor = _statusColor(status);
 
     showModalBottomSheet(
@@ -557,119 +630,62 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setState) => Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
+                    gradient: const LinearGradient(colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)]),
+                    borderRadius: BorderRadius.circular(12),
                   ),
+                  child: const Icon(Icons.event_note_rounded, color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 10),
+                const Text('Leave Request Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F))),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: statusColor.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+                  child: Text(status, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            _buildDetailRow('Leave Type', l['leave_type'] ?? 'N/A'),
+            _buildDetailRow('From Date', l['start_date'] ?? 'N/A'),
+            _buildDetailRow('To Date', l['end_date'] ?? 'N/A'),
+            _buildDetailRow('Day Type', l['day_type'] ?? 'Full Day'),
+            _buildDetailRow('Total Days', '${l['total_days'] ?? 1}'),
+            _buildDetailRow('Reason', l['reason'] ?? 'N/A'),
+            if (l['remarks'] != null && l['remarks'].toString().isNotEmpty)
+              _buildDetailRow('Admin Remarks', l['remarks']),
+            if (l['attachment_url'] != null || l['attachment'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: const [
+                    Icon(Icons.attach_file_rounded, size: 16, color: Colors.blue),
+                    SizedBox(width: 6),
+                    Text('Attachment Uploaded', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.event_note_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Leave Details',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E3A5F),
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _statusIcon(status),
-                          color: statusColor,
-                          size: 14,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          status,
-                          style: TextStyle(
-                            color: statusColor,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const Divider(height: 24),
-              _buildDetailRow('Leave Type', data['leave_type'] ?? 'N/A'),
-              _buildDetailRow('From', data['start_date'] ?? 'N/A'),
-              _buildDetailRow('To', data['end_date'] ?? 'N/A'),
-              _buildDetailRow('Days', '${data['total_days'] ?? 0}'),
-              _buildDetailRow('Reason', data['reason'] ?? 'N/A'),
-              if (data['remarks'] != null && data['remarks'].toString().isNotEmpty)
-                _buildDetailRow('Admin Remarks', data['remarks']),
-              if (data['approved_at'] != null)
-                _buildDetailRow('Reviewed On', data['approved_at']),
-              if (data['attachment'] != null && data['attachment'].toString().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.attach_file_rounded,
-                          size: 16,
-                          color: Colors.blue,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Attachment uploaded',
-                        style: TextStyle(
-                          color: Colors.blue[600],
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 16),
-            ],
-          ),
+            const SizedBox(height: 16),
+          ],
         ),
       ),
     );
@@ -682,25 +698,11 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 100,
-            child: Text(
-              '$label:',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            width: 110,
+            child: Text('$label:', style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500)),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: 13,
-                color: Color(0xFF1E3A5F),
-              ),
-            ),
+            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1E3A5F))),
           ),
         ],
       ),
@@ -712,9 +714,11 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
     final formKey = GlobalKey<FormState>();
     final reasonCtrl = TextEditingController();
     String leaveType = 'Casual Leave';
+    String dayType = 'Full Day'; // Full Day vs Half Day
     DateTime fromDate = DateTime.now();
     DateTime toDate = DateTime.now();
     File? attachment;
+    bool submitting = false;
     final picker = ImagePicker();
 
     showModalBottomSheet(
@@ -725,9 +729,9 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocalState) {
-          int calcDays() {
-            if (leaveType == 'Half Day' || leaveType == 'Work From Home') return 1;
-            return toDate.difference(fromDate).inDays + 1;
+          double calcDays() {
+            if (dayType == 'Half Day' || leaveType == 'Half Day') return 0.5;
+            return (toDate.difference(fromDate).inDays + 1).toDouble();
           }
 
           return Padding(
@@ -749,25 +753,15 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)],
-                            ),
+                            gradient: const LinearGradient(colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)]),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(
-                            Icons.add_rounded,
-                            color: Colors.white,
-                            size: 20,
-                          ),
+                          child: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
                         ),
                         const SizedBox(width: 10),
                         const Text(
                           'Apply Leave',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E3A5F),
-                          ),
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F)),
                         ),
                         const Spacer(),
                         IconButton(
@@ -777,37 +771,61 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                       ],
                     ),
                     const SizedBox(height: 16),
-                    _buildFormDropdown(
+                    
+                    // Leave Type Dropdown
+                    DropdownButtonFormField<String>(
                       value: leaveType,
-                      items: ['Casual Leave', 'Sick Leave', 'Earned Leave', 'Half Day', 'Work From Home'],
-                      label: 'Leave Type',
+                      decoration: InputDecoration(
+                        labelText: 'Leave Type',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'Casual Leave', child: Text('Casual Leave (CL - 8 days/yr)')),
+                        DropdownMenuItem(value: 'Sick Leave', child: Text('Sick Leave (SL - 8 days/yr)')),
+                        DropdownMenuItem(value: 'Earned Leave', child: Text('Earned Leave (EL/PL - 15 days/yr)')),
+                        DropdownMenuItem(value: 'Half Day', child: Text('Half Day Leave (0.5 day)')),
+                        DropdownMenuItem(value: 'Leave Without Pay', child: Text('Unpaid Leave (LWP)')),
+                      ],
                       onChanged: (v) => setLocalState(() => leaveType = v!),
-                      required: true,
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
+
+                    // Full Day / Half Day Switch
+                    Row(
+                      children: [
+                        const Text('Duration:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const SizedBox(width: 12),
+                        ChoiceChip(
+                          label: const Text('Full Day'),
+                          selected: dayType == 'Full Day',
+                          selectedColor: const Color(0xFF1E3A5F),
+                          labelStyle: TextStyle(color: dayType == 'Full Day' ? Colors.white : Colors.black),
+                          onSelected: (sel) => setLocalState(() => dayType = 'Full Day'),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('Half Day'),
+                          selected: dayType == 'Half Day',
+                          selectedColor: const Color(0xFF1E3A5F),
+                          labelStyle: TextStyle(color: dayType == 'Half Day' ? Colors.white : Colors.black),
+                          onSelected: (sel) => setLocalState(() => dayType = 'Half Day'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Date Selectors
                     Row(
                       children: [
                         Expanded(
-                          child: _buildDateField(
-                            label: 'From Date',
-                            date: fromDate,
+                          child: InkWell(
                             onTap: () async {
                               final d = await showDatePicker(
                                 context: context,
                                 initialDate: fromDate,
-                                firstDate: DateTime.now().subtract(const Duration(days: 7)),
-                                lastDate: DateTime.now().add(const Duration(days: 60)),
-                                builder: (context, child) {
-                                  return Theme(
-                                    data: Theme.of(context).copyWith(
-                                      colorScheme: const ColorScheme.light(
-                                        primary: Color(0xFF1E3A5F),
-                                        onPrimary: Colors.white,
-                                      ),
-                                    ),
-                                    child: child!,
-                                  );
-                                },
+                                firstDate: DateTime.now().subtract(const Duration(days: 14)),
+                                lastDate: DateTime.now().add(const Duration(days: 90)),
                               );
                               if (d != null) {
                                 setLocalState(() {
@@ -816,100 +834,88 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                                 });
                               }
                             },
+                            child: InputDecorator(
+                              decoration: InputDecoration(
+                                labelText: 'From Date',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              child: Text('${fromDate.day}/${fromDate.month}/${fromDate.year}'),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: _buildDateField(
-                            label: 'To Date',
-                            date: toDate,
+                          child: InkWell(
                             onTap: () async {
                               final d = await showDatePicker(
                                 context: context,
                                 initialDate: toDate,
                                 firstDate: fromDate,
-                                lastDate: fromDate.add(const Duration(days: 30)),
-                                builder: (context, child) {
-                                  return Theme(
-                                    data: Theme.of(context).copyWith(
-                                      colorScheme: const ColorScheme.light(
-                                        primary: Color(0xFF1E3A5F),
-                                        onPrimary: Colors.white,
-                                      ),
-                                    ),
-                                    child: child!,
-                                  );
-                                },
+                                lastDate: fromDate.add(const Duration(days: 60)),
                               );
                               if (d != null) setLocalState(() => toDate = d);
                             },
+                            child: InputDecorator(
+                              decoration: InputDecoration(
+                                labelText: 'To Date',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              child: Text('${toDate.day}/${toDate.month}/${toDate.year}'),
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E3A5F).withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.calendar_today_rounded,
-                              size: 14,
-                              color: Color(0xFF1E3A5F),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Days: ${calcDays()}',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _buildFormField(
-                      controller: reasonCtrl,
-                      label: 'Reason',
-                      icon: Icons.description_rounded,
-                      maxLines: 2,
-                      required: true,
-                    ),
                     const SizedBox(height: 10),
+
+                    // Total Days Calculation Card
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.grey[200]!,
-                          width: 1,
-                        ),
+                        color: const Color(0xFF1E3A5F).withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.attach_file_rounded,
-                            size: 18,
-                            color: attachment != null ? Colors.green : Colors.grey[400],
+                          const Icon(Icons.info_outline_rounded, color: Color(0xFF1E3A5F), size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Total Days Calculated: ${calcDays()} day(s)',
+                            style: const TextStyle(color: Color(0xFF1E3A5F), fontWeight: FontWeight.bold, fontSize: 13),
                           ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Reason Textfield
+                    TextFormField(
+                      controller: reasonCtrl,
+                      maxLines: 2,
+                      decoration: InputDecoration(
+                        labelText: 'Reason for Leave',
+                        hintText: 'Provide detailed reason...',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Reason is required' : null,
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Attachment Picker
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.attach_file_rounded, color: attachment != null ? Colors.green : Colors.grey),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              attachment != null ? 'Image selected: ${attachment!.path.split('/').last}' : 'Attachment (optional)',
-                              style: TextStyle(
-                                color: attachment != null ? Colors.green : Colors.grey[500],
-                                fontSize: 13,
-                              ),
+                              attachment != null ? 'Attachment Selected: ${attachment!.path.split('/').last}' : 'Attachment (Medical Cert, Optional)',
+                              style: TextStyle(fontSize: 12, color: attachment != null ? Colors.green : Colors.grey[600]),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -918,100 +924,66 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                               final x = await picker.pickImage(source: ImageSource.gallery);
                               if (x != null) setLocalState(() => attachment = File(x.path));
                             },
-                            style: TextButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E3A5F).withOpacity(0.05),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            ),
-                            child: Text(
-                              attachment != null ? 'Change' : 'Pick Image',
-                              style: TextStyle(
-                                color: const Color(0xFF1E3A5F),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                            child: Text(attachment != null ? 'Change' : 'Pick Image'),
                           ),
-                          if (attachment != null)
-                            IconButton(
-                              icon: Icon(Icons.close_rounded, size: 18, color: Colors.grey[400]),
-                              onPressed: () => setLocalState(() => attachment = null),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
+
+                    // Submit Button
                     ElevatedButton(
-                      onPressed: () async {
-                        if (!formKey.currentState!.validate()) return;
+                      onPressed: submitting
+                          ? null
+                          : () async {
+                              if (!formKey.currentState!.validate()) return;
+                              setLocalState(() => submitting = true);
 
-                        setLocalState(() => _submitting = true);
+                              final payload = {
+                                'leave_type': leaveType,
+                                'day_type': dayType,
+                                'from_date': fromDate.toIso8601String().split('T')[0],
+                                'to_date': toDate.toIso8601String().split('T')[0],
+                                'reason': reasonCtrl.text.trim(),
+                              };
 
-                        final data = {
-                          'leave_type': leaveType,
-                          'from_date': fromDate.toIso8601String().split('T')[0],
-                          'to_date': toDate.toIso8601String().split('T')[0],
-                          'reason': reasonCtrl.text,
-                        };
+                              if (attachment != null) {
+                                final bytes = await attachment!.readAsBytes();
+                                payload['attachment'] = 'data:image/jpeg;base64,' + base64Encode(bytes);
+                              }
 
-                        if (attachment != null) {
-                          final bytes = await attachment!.readAsBytes();
-                          data['attachment'] = 'data:image/jpeg;base64,' + base64Encode(bytes);
-                        }
+                              final res = await ApiService().post('leaves/apply', payload);
+                              setLocalState(() => submitting = false);
 
-                        final res = await ApiService().post('leaves/apply', data);
-
-                        setLocalState(() => _submitting = false);
-
-                        if (ctx.mounted) {
-                          Navigator.pop(ctx);
-                          if (res['success'] == true) {
-                            _fetch();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text('✅ Leave applied successfully'),
-                                backgroundColor: Colors.green,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(res['message'] ?? '❌ Failed to apply leave'),
-                                backgroundColor: Colors.red,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            );
-                          }
-                        }
-                      },
+                              if (ctx.mounted) {
+                                Navigator.pop(ctx);
+                                if (res['success'] == true) {
+                                  _fetch();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('✅ Leave application submitted successfully'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(res['message'] ?? '❌ Failed to submit leave'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF1E3A5F),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.all(14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        elevation: 4,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      child: const Text(
-                        'Apply Leave',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
+                      child: submitting
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text('Submit Leave Application', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
                     const SizedBox(height: 20),
                   ],
@@ -1021,120 +993,6 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
           );
         },
       ),
-    );
-  }
-
-  bool _submitting = false;
-
-  // ==================== FORM FIELD ====================
-  Widget _buildFormField({
-    required TextEditingController controller,
-    required String label,
-    IconData? icon,
-    TextInputType? keyboardType,
-    bool required = false,
-    int maxLines = 1,
-  }) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: required ? '$label *' : label,
-        labelStyle: TextStyle(color: Colors.grey[600]),
-        prefixIcon: icon != null ? Icon(icon, color: Colors.grey[500]) : null,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      ),
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      validator: required
-          ? (v) => v?.isEmpty == true ? '$label is required' : null
-          : null,
-    );
-  }
-
-  // ==================== FORM DROPDOWN ====================
-  Widget _buildFormDropdown({
-    required String value,
-    required List<String> items,
-    required String label,
-    required Function(String?) onChanged,
-    bool required = false,
-  }) {
-    return DropdownButtonFormField<String>(
-      value: value,
-      items: items.map((s) => DropdownMenuItem(
-        value: s,
-        child: Text(s),
-      )).toList(),
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        labelText: required ? '$label *' : label,
-        labelStyle: TextStyle(color: Colors.grey[600]),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      ),
-      validator: required
-          ? (v) => v == null ? 'Please select $label' : null
-          : null,
-    );
-  }
-
-  // ==================== DATE FIELD ====================
-  Widget _buildDateField({
-    required String label,
-    required DateTime date,
-    required VoidCallback onTap,
-  }) {
-    return TextFormField(
-      readOnly: true,
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: Colors.grey[600]),
-        suffixIcon: const Icon(
-          Icons.calendar_today_rounded,
-          color: Color(0xFF1E3A5F),
-          size: 18,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      ),
-      controller: TextEditingController(
-        text: date.toIso8601String().split('T')[0],
-      ),
-      onTap: onTap,
     );
   }
 }

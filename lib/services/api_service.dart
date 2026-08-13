@@ -748,6 +748,13 @@ class ApiService {
   Future<Map<String, dynamic>> createHRActivity(Map<String, dynamic> data) async {
     return post('hr_activities/create', data);
   }
+
+  // ============================================================
+  // ✅ FCM PUSH NOTIFICATIONS
+  // ============================================================
+  Future<Map<String, dynamic>> updateFcmToken(String token) async {
+    return post('notifications/update_fcm_token', {'fcm_token': token});
+  }
 }
 
 class UnauthorizedException implements Exception {

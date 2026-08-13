@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "726543447047",
+    "project_id": "yatharthfcm",
+    "storage_bucket": "yatharthfcm.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:726543447047:android:8b9fd6d79422bc49ec66a2",
+        "android_client_info": {
+          "package_name": "com.yathrathems.ems"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJDDZWoUxJGdSHO9KgbFggGs2fBcginrg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

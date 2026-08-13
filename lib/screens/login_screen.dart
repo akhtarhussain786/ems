@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/api_service.dart';
+import '../services/fcm_service.dart';
 import '../utils/constants.dart';
 import 'home_screen.dart';
 
@@ -198,6 +199,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
         }
 
         await ApiService().setToken(token);
+        FCMService().syncTokenWithBackend();
 
         final prefs = await SharedPreferences.getInstance();
 
