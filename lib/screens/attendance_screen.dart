@@ -464,7 +464,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                             blurRadius: 30,
                             spreadRadius: 5,
                           ),
->>>>>>> origin/fix/session-expiry-leads-and-ui
                         ],
                       ),
                       child: const Icon(
