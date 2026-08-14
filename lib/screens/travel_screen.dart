@@ -599,12 +599,226 @@ class _TravelScreenState extends State<TravelScreen> with SingleTickerProviderSt
                     ],
                   ],
                 ),
+
+                // A pending trip with no closing reading cannot have its
+                // allowance worked out, so offer to close it here.
+                if (!isApproved && !isRejected && _endKmOf(t) == 0) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showCompleteForm(t),
+                      icon: const Icon(Icons.flag_rounded, size: 16),
+                      label: const Text('Complete trip'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF1E3A5F),
+                        side: const BorderSide(color: Color(0xFF1E3A5F)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                ] else if (_totalKmOf(t) > 0) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.route_rounded, size: 12, color: Colors.grey[500]),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_totalKmOf(t)} km total',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (_allowanceOf(t) > 0) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '₹${_allowanceOf(t).toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.green,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  void _showMsg(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: msg.startsWith('✅') ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(10)),
+        ),
+      ),
+    );
+  }
+
+  int _endKmOf(Map<String, dynamic> t) => int.tryParse('${t['end_km'] ?? 0}') ?? 0;
+  int _totalKmOf(Map<String, dynamic> t) => int.tryParse('${t['total_km'] ?? 0}') ?? 0;
+  double _allowanceOf(Map<String, dynamic> t) =>
+      double.tryParse('${t['travel_allowance'] ?? 0}') ?? 0;
+
+  // ==================== COMPLETE TRIP ====================
+  void _showCompleteForm(Map<String, dynamic> t) {
+    final endKmCtrl = TextEditingController();
+    final endLocationCtrl = TextEditingController();
+    final startKm = int.tryParse('${t['start_km'] ?? 0}') ?? 0;
+    File? endPhoto;
+    bool submitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocalState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom,
+            left: 20,
+            right: 20,
+            top: 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Complete Trip',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E3A5F),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Started at $startKm km',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: endKmCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Closing odometer reading *',
+                    prefixIcon: Icon(Icons.speed_rounded),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: endLocationCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'End location',
+                    prefixIcon: Icon(Icons.location_on_rounded),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await ImagePicker().pickImage(
+                      source: ImageSource.camera,
+                      imageQuality: 70,
+                    );
+                    if (picked != null) {
+                      setLocalState(() => endPhoto = File(picked.path));
+                    }
+                  },
+                  icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                  label: Text(endPhoto == null
+                      ? 'Odometer photo (optional)'
+                      : 'Photo attached'),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          final endKm = int.tryParse(endKmCtrl.text.trim()) ?? 0;
+                          if (endKm <= 0) {
+                            _showMsg('Enter the closing odometer reading');
+                            return;
+                          }
+                          if (endKm < startKm) {
+                            _showMsg('Closing reading cannot be less than $startKm km');
+                            return;
+                          }
+                          setLocalState(() => submitting = true);
+                          await _submitCompletion(t, endKm, endLocationCtrl.text.trim(), endPhoto);
+                          setLocalState(() => submitting = false);
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3A5F),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: submitting
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Submit'),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitCompletion(
+      Map<String, dynamic> t, int endKm, String endLocation, File? photo) async {
+    try {
+      final id = t['id'];
+      final fields = {
+        'end_km': endKm.toString(),
+        'end_location': endLocation,
+      };
+      final res = await ApiService()
+          .postMultipart('travel/complete/$id', fields, photo, fileField: 'odometer_end_photo');
+
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      if (res['success'] == true) {
+        _fetch();
+        _showMsg('✅ Trip completed');
+      } else {
+        _showMsg(res['message'] ?? '❌ Could not complete the trip');
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        _showMsg('❌ Error: $e');
+      }
+    }
   }
 
   // ==================== SHOW FORM ====================

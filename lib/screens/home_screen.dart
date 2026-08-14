@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import '../services/app_update_service.dart';
 import '../services/session_manager.dart';
+import '../widgets/update_dialog.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
 import '../utils/dept_nav_helper.dart';
@@ -82,6 +84,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _loadProfileImage();
     _startTimeUpdate();
     _animationController.forward();
+    _checkForAppUpdate();
+  }
+
+  /// Runs after the dashboard is on screen so the launch is never blocked.
+  /// A failed check is silent — the app must stay usable either way.
+  Future<void> _checkForAppUpdate() async {
+    final result = await AppUpdateService.instance.check();
+    if (result == null || !mounted) return;
+
+    // Wait for the first frame so the dialog has a laid-out route to sit on.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) UpdateDialog.show(context, result);
+    });
   }
 
   @override

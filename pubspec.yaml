@@ -29,6 +29,12 @@ dependencies:
   flutter_local_notifications: ^18.0.1
   file_picker: ^8.1.7
 
+  # In-app APK updates (distributed outside the Play Store)
+  package_info_plus: ^8.0.2   # installed version, never hardcoded
+  dio: ^5.7.0                 # download with progress + cancellation
+  open_filex: ^4.5.0          # hands the APK to Android's package installer
+  crypto: ^3.0.5              # SHA-256 verification of the downloaded file
+
 
 
 
