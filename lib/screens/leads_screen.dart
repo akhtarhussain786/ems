@@ -71,7 +71,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     try {
       final res = await ApiService().post('leads/list', {'status': _statusFilter});
       if (mounted && res['success'] == true) setState(() => _leads = res['data'] ?? []);
-    } catch (_) {}
+    } catch (e) { debugPrint('leads_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -81,7 +81,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     try {
       final res = await ApiService().searchLeads({'query': q});
       if (mounted && res['success'] == true) setState(() => _leads = res['data'] ?? []);
-    } catch (_) {}
+    } catch (e) { debugPrint('leads_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

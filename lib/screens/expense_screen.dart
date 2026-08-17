@@ -57,7 +57,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> with SingleTickerProvider
       if (mounted && res['success'] == true) {
         setState(() => _expenses = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('expense_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

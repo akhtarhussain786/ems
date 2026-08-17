@@ -70,7 +70,7 @@ class _MarketingScreenState extends State<MarketingScreen> with SingleTickerProv
           _duty = res['data']?['duty'];
         });
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('marketing_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

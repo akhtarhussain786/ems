@@ -45,7 +45,7 @@ class _DownloadScreenState extends State<DownloadScreen> with SingleTickerProvid
       if (mounted && res['success'] == true) {
         setState(() => _files = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('download_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

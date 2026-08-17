@@ -55,7 +55,7 @@ class _CampaignsScreenState extends State<CampaignsScreen> with SingleTickerProv
       if (mounted && res['success'] == true) {
         setState(() => _campaigns = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('campaigns_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

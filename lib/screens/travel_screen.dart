@@ -57,7 +57,7 @@ class _TravelScreenState extends State<TravelScreen> with SingleTickerProviderSt
       if (mounted && res['success'] == true) {
         setState(() => _travels = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('travel_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

@@ -558,7 +558,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
       final dt = DateTime.parse(dateStr);
       dayNum = dt.day.toString();
       dayName = DateFormat('EEE').format(dt);
-    } catch (_) {}
+    } catch (e) { debugPrint('monthly_attendance_report_screen: $e'); }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),

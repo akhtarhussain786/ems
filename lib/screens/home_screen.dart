@@ -305,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       if (mounted && res['success'] == true) {
         setState(() => _unreadCount = res['count'] ?? 0);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('home_screen: $e'); }
   }
 
   Future<void> _logout() async {
