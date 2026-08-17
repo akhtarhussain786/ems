@@ -33,7 +33,15 @@ dependencies:
   package_info_plus: ^8.0.2   # installed version, never hardcoded
   dio: ^5.7.0                 # download with progress + cancellation
   open_filex: ^4.5.0          # hands the APK to Android's package installer
-  crypto: ^3.0.5              # SHA-256 verification of the downloaded file
+  crypto: ^3.0.5
+  device_info_plus: ^10.1.2   # stable per-device id, so an account binds to one handset              # SHA-256 verification of the downloaded file
+
+  # Face verification at check-in. All three run on the device and cost nothing
+  # to use: no per-call API, no subscription, nothing leaves the handset except
+  # the resulting embedding.
+  tflite_flutter: ^0.12.1              # runs the face model locally
+  google_mlkit_face_detection: ^0.14.0 # finds and frames the face first
+  image: ^4.8.0                        # crop and resize for the model
 
 
 
@@ -49,6 +57,10 @@ flutter:
   assets:
     - assets/images/logo.png
     - assets/images/logo25.png
+    # Face recognition model. Declared as a directory so the app still builds
+    # when it is absent — face verification then reports itself unavailable
+    # rather than the whole build failing.
+    - assets/models/
 
 # ✅ App Icon Configuration
 flutter_launcher_icons:

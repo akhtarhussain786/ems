@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../services/api_service.dart';
+import '../services/face_embedding_service.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
 import 'home_screen.dart';
@@ -28,6 +29,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   String? _error;
   String? _photoPath;
   String? _photoBase64;
+
+  /// Face read from the selfie, sent with the check-in so the server can
+  /// confirm the person clocking in is the one signed in.
+  List<double>? _faceEmbedding;
   double? _latitude;
   double? _longitude;
   String _address = '';
@@ -224,6 +229,21 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     }
   }
 
+  /// Reads the face out of the selfie, if the model is bundled and a face is
+  /// there. A failure is deliberately not surfaced here: someone who has never
+  /// registered a face is unaffected, and for someone who has, the server
+  /// replies with the reason. Blocking the button on it would stop check-ins
+  /// for a reason the app cannot actually judge.
+  Future<void> _extractFace(File photo) async {
+    try {
+      final result = await FaceEmbeddingService.instance.embedFromFile(photo);
+      if (!mounted) return;
+      setState(() => _faceEmbedding = result.embedding);
+    } catch (e) {
+      print('🔴 Face embedding error: $e');
+    }
+  }
+
   Future<void> _capturePhoto() async {
     final picker = ImagePicker();
     final XFile? photo = await picker.pickImage(
@@ -239,7 +259,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       setState(() {
         _photoPath = photo.path;
         _photoBase64 = null;
+        _faceEmbedding = null;
       });
+
+      // Read from the selfie that is being taken anyway, so face verification
+      // adds nothing for the employee to do. Computed from the original file
+      // rather than the compressed one, which is sized for upload, not for
+      // recognising a face.
+      await _extractFace(File(photo.path));
 
       try {
         final dir = await getTemporaryDirectory();
@@ -304,7 +331,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
             _longitude!,
             _address,
             file,
-            _photoBase64
+            _photoBase64,
+            faceEmbedding: _faceEmbedding,
         );
       } else {
         response = await ApiService().checkOut(
@@ -312,7 +340,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
             _longitude!,
             _address,
             file,
-            _photoBase64
+            _photoBase64,
+            faceEmbedding: _faceEmbedding,
         );
       }
 
@@ -351,11 +380,22 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         final errorMsg = response['message'] ?? 'Failed to submit attendance';
         print('🔴 API returned error: $errorMsg');
 
+        // A refused face check needs a fresh photo, so the old one is cleared
+        // rather than left in place for the employee to submit again unchanged.
+        final faceMismatch = response['face_mismatch'] == true;
+        if (faceMismatch) {
+          setState(() {
+            _photoPath = null;
+            _photoBase64 = null;
+            _faceEmbedding = null;
+          });
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ $errorMsg'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            duration: Duration(seconds: faceMismatch ? 6 : 3),
           ),
         );
         setState(() => _loading = false);

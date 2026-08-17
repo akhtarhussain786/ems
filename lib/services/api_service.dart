@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../utils/constants.dart';
+import 'device_identity.dart';
 import 'session_manager.dart';
 
 class ApiService {
@@ -308,10 +309,14 @@ class ApiService {
   // ============================================================
   Future<Map<String, dynamic>> login(String employeeId, String password, {bool remember = false}) async {
     try {
+      // Sent so the server can tie this account to one handset — a shared
+      // password is not enough to sign in on a different phone.
       final response = await post('auth/login', {
         'employee_id': employeeId,
         'password': password,
         'remember': remember,
+        'device_id': await DeviceIdentity.instance.id(),
+        'device_name': await DeviceIdentity.instance.name(),
       }, auth: false);
 
       if (response['success'] == true) {
@@ -354,14 +359,16 @@ class ApiService {
       double lng,
       String address,
       File? photo,
-      String? photoBase64,
-      ) async {
+      String? photoBase64, {
+        List<double>? faceEmbedding,
+      }) async {
     final fields = {
       'latitude': lat.toString(),
       'longitude': lng.toString(),
       'address': address,
     };
     if (photoBase64 != null) fields['photo_base64'] = photoBase64;
+    if (faceEmbedding != null) fields['face_embedding'] = jsonEncode(faceEmbedding);
     if (photo != null && await photo.exists()) {
       return postMultipart('attendance/checkin', fields, photo);
     }
@@ -370,6 +377,7 @@ class ApiService {
       'longitude': lng,
       'address': address,
       'photo_base64': photoBase64,
+      if (faceEmbedding != null) 'face_embedding': faceEmbedding,
     });
   }
 
@@ -378,14 +386,16 @@ class ApiService {
       double lng,
       String address,
       File? photo,
-      String? photoBase64,
-      ) async {
+      String? photoBase64, {
+        List<double>? faceEmbedding,
+      }) async {
     final fields = {
       'latitude': lat.toString(),
       'longitude': lng.toString(),
       'address': address,
     };
     if (photoBase64 != null) fields['photo_base64'] = photoBase64;
+    if (faceEmbedding != null) fields['face_embedding'] = jsonEncode(faceEmbedding);
     if (photo != null && await photo.exists()) {
       return postMultipart('attendance/checkout', fields, photo);
     }
@@ -393,6 +403,7 @@ class ApiService {
       'latitude': lat,
       'longitude': lng,
       'address': address,
+      if (faceEmbedding != null) 'face_embedding': faceEmbedding,
       'photo_base64': photoBase64,
     });
   }
@@ -659,6 +670,25 @@ class ApiService {
   // ============================================================
   Future<Map<String, dynamic>> updateFcmToken(String token) async {
     return post('notifications/update_fcm_token', {'fcm_token': token});
+  }
+
+  // ============================================================
+  // FACE REGISTRATION
+  // ============================================================
+
+  /// Whether this employee has registered a face, and whether one is required.
+  Future<Map<String, dynamic>> getFaceStatus() async {
+    return get('face/status');
+  }
+
+  /// Registers the face. The server refuses a second attempt, so this succeeds
+  /// exactly once until a super admin clears it.
+  Future<Map<String, dynamic>> enrollFace(
+      List<double> embedding, String modelVersion) async {
+    return post('face/enroll', {
+      'embedding': embedding,
+      'model_version': modelVersion,
+    });
   }
 }
 

@@ -4,9 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/app_update_service.dart';
 import '../services/profile_photo_service.dart';
 import '../utils/constants.dart';
 import '../utils/profile_image.dart';
+import '../widgets/update_dialog.dart';
+import 'face_enrollment_screen.dart';
+import 'help_screen.dart';
 import 'salary_report_screen.dart';
 import 'attendance_report_screen.dart';
 import 'home_screen.dart';
@@ -45,6 +49,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoSync = true;
   String _selectedLanguage = 'English';
   final ImagePicker _picker = ImagePicker();
+
+  String _appVersion = '';
+
+  /// null until the server has been asked, so the row does not claim "not
+  /// registered" to someone who is, just because the check has not returned.
+  bool? _faceEnrolled;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppVersion();
+    _loadFaceStatus();
+  }
+
+  Future<void> _loadFaceStatus() async {
+    try {
+      final response = await ApiService().getFaceStatus();
+      if (!mounted) return;
+      setState(() => _faceEnrolled = response['data']?['enrolled'] == true);
+    } catch (_) {
+      // Left unknown; the row simply shows its neutral subtitle.
+    }
+  }
+
+  Future<void> _openFaceEnrollment() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FaceEnrollmentScreen()),
+    );
+    // Refreshed on return so the row reflects an enrollment just completed.
+    if (mounted) _loadFaceStatus();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final version = await AppUpdateService.instance.installedVersion();
+    if (mounted) setState(() => _appVersion = 'v$version');
+  }
+
+  /// Tapping the version row asks the server whether a newer build exists.
+  Future<void> _checkForUpdates() async {
+    _showSnack('Checking for updates…');
+    // ignoreDismissed so an explicit check still reports a version the user
+    // previously tapped Later on.
+    final result = await AppUpdateService.instance.check(ignoreDismissed: true);
+    if (!mounted) return;
+
+    if (result == null) {
+      _showSnack('You are on the latest version');
+      return;
+    }
+    UpdateDialog.show(context, result);
+  }
 
   void _showSnack(String msg, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -325,6 +381,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildSettingsTile(
+                    icon: Icons.face_retouching_natural_rounded,
+                    title: 'Face Registration',
+                    subtitle: _faceEnrolled == null
+                        ? 'Used to verify your check-in'
+                        : (_faceEnrolled!
+                            ? 'Registered'
+                            : 'Not registered yet — tap to set up'),
+                    onTap: _openFaceEnrollment,
+                  ),
+                  const Divider(height: 1, indent: 16),
+                  _buildSettingsTile(
                     icon: Icons.lock_rounded,
                     title: 'Change Password',
                     subtitle: 'Update your password',
@@ -406,22 +473,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSettingsTile(
                     icon: Icons.info_rounded,
                     title: 'App Version',
-                    subtitle: 'Yatharth Connect v1.0.0',
-                    onTap: () {},
-                  ),
-                  const Divider(height: 1, indent: 16),
-                  _buildSettingsTile(
-                    icon: Icons.privacy_tip_rounded,
-                    title: 'Privacy Policy',
-                    subtitle: 'Read our privacy policy',
-                    onTap: () {},
+                    // Read from the package, so it can never drift from the
+                    // build the way the hardcoded "v1.0.0" had.
+                    subtitle: 'Yatharth Connect $_appVersion',
+                    onTap: _checkForUpdates,
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildSettingsTile(
                     icon: Icons.help_rounded,
                     title: 'Help & Support',
-                    subtitle: 'Get help and support',
-                    onTap: () {},
+                    subtitle: 'Raise a support ticket',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const HelpScreen()),
+                    ),
                   ),
                 ],
               ),
