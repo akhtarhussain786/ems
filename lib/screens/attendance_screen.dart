@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -245,50 +245,49 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   }
 
   Future<void> _capturePhoto() async {
-    final picker = ImagePicker();
-    final XFile? photo = await picker.pickImage(
-      source: ImageSource.camera,
-      preferredCameraDevice: CameraDevice.front,
-      imageQuality: 70,
+    // Navigate to the front-camera preview screen; it returns the captured
+    // file path, or null if the user backed out.
+    final String? photoPath = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const _FrontCameraScreen()),
     );
 
-    if (photo != null) {
-      print('🟢 Photo captured: ${photo.path}');
-      print('🟢 Photo size: ${await photo.length()} bytes');
+    if (photoPath == null || !mounted) return;
 
-      setState(() {
-        _photoPath = photo.path;
-        _photoBase64 = null;
-        _faceEmbedding = null;
-      });
+    print('🟢 Photo captured: $photoPath');
 
-      // Read from the selfie that is being taken anyway, so face verification
-      // adds nothing for the employee to do. Computed from the original file
-      // rather than the compressed one, which is sized for upload, not for
-      // recognising a face.
-      await _extractFace(File(photo.path));
+    setState(() {
+      _photoPath = photoPath;
+      _photoBase64 = null;
+      _faceEmbedding = null;
+    });
 
-      try {
-        final dir = await getTemporaryDirectory();
-        final targetPath = '${dir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    // Read from the selfie that is being taken anyway, so face verification
+    // adds nothing for the employee to do. Computed from the original file
+    // rather than the compressed one, which is sized for upload, not for
+    // recognising a face.
+    await _extractFace(File(photoPath));
 
-        print('🟢 Compressing image...');
-        final compressed = await FlutterImageCompress.compressAndGetFile(
-          photo.path, targetPath,
-          minWidth: 480,
-          minHeight: 640,
-          quality: 60,
-        );
+    try {
+      final dir = await getTemporaryDirectory();
+      final targetPath = '${dir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-        if (compressed != null) {
-          final bytes = await compressed.readAsBytes();
-          print('🟢 Compressed size: ${bytes.length} bytes');
-          setState(() => _photoBase64 = base64Encode(bytes));
-          setState(() => _photoPath = compressed.path);
-        }
-      } catch (e) {
-        print('🔴 Compression error: $e');
+      print('🟢 Compressing image...');
+      final compressed = await FlutterImageCompress.compressAndGetFile(
+        photoPath, targetPath,
+        minWidth: 480,
+        minHeight: 640,
+        quality: 60,
+      );
+
+      if (compressed != null) {
+        final bytes = await compressed.readAsBytes();
+        print('🟢 Compressed size: ${bytes.length} bytes');
+        setState(() => _photoBase64 = base64Encode(bytes));
+        setState(() => _photoPath = compressed.path);
       }
+    } catch (e) {
+      print('🔴 Compression error: $e');
     }
   }
 
@@ -639,8 +638,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         children: [
           Image.asset(
             'assets/images/logo25.png',
-            height: 180,
-            width: 180,
+            height: 40,
+            width: 120,
             fit: BoxFit.contain,
           ),
         ],
@@ -1393,6 +1392,251 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Full-screen front-camera preview with a manual capture button.
+//
+// Opens ONLY the front camera (CameraLensDirection.front) using the `camera`
+// package. The photo is taken only when the user taps the capture button —
+// never automatically. Returns the captured file path via Navigator.pop,
+// or null if the user presses back.
+// ---------------------------------------------------------------------------
+class _FrontCameraScreen extends StatefulWidget {
+  const _FrontCameraScreen();
+
+  @override
+  State<_FrontCameraScreen> createState() => _FrontCameraScreenState();
+}
+
+class _FrontCameraScreenState extends State<_FrontCameraScreen> {
+  CameraController? _controller;
+  bool _initialising = true;
+  bool _capturing = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      final front = cameras.where(
+        (c) => c.lensDirection == CameraLensDirection.front,
+      );
+
+      if (front.isEmpty) {
+        setState(() {
+          _error = 'Front camera not available on this device.';
+          _initialising = false;
+        });
+        return;
+      }
+
+      final controller = CameraController(
+        front.first,
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
+
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+
+      setState(() {
+        _controller = controller;
+        _initialising = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not open camera: $e';
+        _initialising = false;
+      });
+    }
+  }
+
+  Future<void> _takePicture() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized || _capturing) {
+      return;
+    }
+
+    setState(() => _capturing = true);
+
+    try {
+      final xFile = await controller.takePicture();
+      if (!mounted) return;
+      Navigator.pop(context, xFile.path);
+    } catch (e) {
+      print('🔴 Capture error: $e');
+      if (!mounted) return;
+      setState(() => _capturing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Capture failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: _error != null
+          ? _buildError()
+          : _initialising
+              ? _buildLoading()
+              : _buildPreview(),
+    );
+  }
+
+  Widget _buildLoading() {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(color: Colors.white),
+          SizedBox(height: 16),
+          Text(
+            'Opening front camera...',
+            style: TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.camera_alt_outlined, color: Colors.red, size: 64),
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Go Back'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreview() {
+    final controller = _controller!;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Live camera preview, scaled to fill the screen.
+        Center(
+          child: AspectRatio(
+            aspectRatio: 1 / controller.value.aspectRatio,
+            child: CameraPreview(controller),
+          ),
+        ),
+
+        // Top bar with back button.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Take Selfie',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // Bottom capture button.
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 32),
+              child: Center(
+                child: GestureDetector(
+                  onTap: _capturing ? null : _takePicture,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 76,
+                    height: 76,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _capturing ? Colors.grey : Colors.white,
+                      border: Border.all(color: Colors.white, width: 4),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: _capturing
+                        ? const Padding(
+                            padding: EdgeInsets.all(20),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.camera_alt,
+                            color: Color(0xFF1E3A5F),
+                            size: 32,
+                          ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

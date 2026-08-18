@@ -189,11 +189,18 @@ class FaceEmbeddingService {
         .compareTo(a.boundingBox.width * a.boundingBox.height));
     final face = faces.first;
 
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) {
+    final rawDecoded = img.decodeImage(bytes);
+    if (rawDecoded == null) {
       return const FaceResult.failed(
         FaceFailure.unreadableImage, 'Could not read the photo. Please try again.');
     }
+
+    // Critical: img.decodeImage does NOT apply the EXIF orientation tag — it
+    // returns the raw pixel buffer, which for a portrait selfie is sideways.
+    // ML Kit *does* apply orientation, so its bounding box is in the upright
+    // frame.  Without this call, _cropFace would cut upright coordinates out
+    // of a sideways buffer, producing garbage that the model can't match.
+    final decoded = img.bakeOrientation(rawDecoded);
 
     final frameArea = decoded.width * decoded.height;
     final faceArea = face.boundingBox.width * face.boundingBox.height;
