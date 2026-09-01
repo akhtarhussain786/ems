@@ -26,7 +26,6 @@ class _MarketingScreenState extends State<MarketingScreen> with SingleTickerProv
 
   // Duty fields
   File? _dutySelfie;
-  String? _dutyStartKm;
 
   // Visit form
   final _formKey = GlobalKey<FormState>();
@@ -90,34 +89,103 @@ class _MarketingScreenState extends State<MarketingScreen> with SingleTickerProv
     }
   }
 
+  /// Takes one photo, telling the employee what it is for.
+  ///
+  /// Two are needed at each end of a duty — a selfie and the odometer — and
+  /// they are separate shots, so the prompt says which one is being asked for.
+  /// Asks for an odometer reading.
+  ///
+  /// Returns null if they skip it. start_km used to be hardcoded to '0' because
+  /// no field ever set it, and end_km was never sent at all — so the distance
+  /// travelled was always zero and the odometer photographs were evidence for a
+  /// number nobody had recorded.
+  Future<String?> _askKm(String what) async {
+    if (!mounted) return null;
+    final controller = TextEditingController();
+    try {
+      return await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: Text(what),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Odometer reading (km)',
+              hintText: 'e.g. 24500',
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Skip')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      // Disposed here rather than in the State: this controller belongs to the
+      // dialog, and the dialog is gone by the time we reach this line.
+      controller.dispose();
+    }
+  }
+
+  Future<File?> _capture(String what) async {
+    if (!mounted) return null;
+    final proceed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(what),
+        content: Text('The camera will open for the $what.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open camera')),
+        ],
+      ),
+    );
+    if (proceed != true) return null;
+
+    final shot = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      imageQuality: 70,
+    );
+    return shot == null ? null : File(shot.path);
+  }
+
   Future<void> _startDuty() async {
     HapticFeedback.mediumImpact();
     setState(() => _dutySubmitting = true);
 
     await _getLocation();
 
-    final picker = ImagePicker();
-    final XFile? photo = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 70,
-    );
-    if (photo == null) {
+    final selfie = await _capture('starting selfie');
+    if (selfie == null) {
       setState(() => _dutySubmitting = false);
       return;
     }
 
+    // Backs up the reading typed in below. Optional: if either is skipped the
+    // duty still starts, exactly as it did before.
+    final odometer = await _capture('odometer photo');
+    final startKm = await _askKm('Starting odometer');
+
     final fields = {
       'latitude': _latitude?.toString() ?? '',
       'longitude': _longitude?.toString() ?? '',
-      'start_km': _dutyStartKm ?? '0',
+      if (startKm != null && startKm.isNotEmpty) 'start_km': startKm,
     };
 
     try {
       final res = await ApiService().postMultipart(
           'marketing/duty-start',
           fields,
-          File(photo.path),
-          fileField: 'selfie'
+          selfie,
+          fileField: 'selfie',
+          extraFiles: odometer == null ? null : {'odometer_photo': odometer},
       );
 
       if (mounted && res['success'] == true) {
@@ -164,22 +232,24 @@ class _MarketingScreenState extends State<MarketingScreen> with SingleTickerProv
     HapticFeedback.mediumImpact();
     setState(() => _dutySubmitting = true);
 
-    final picker = ImagePicker();
-    final XFile? photo = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 70,
-    );
-    if (photo == null) {
+    final odometer = await _capture('closing odometer photo');
+    if (odometer == null) {
       setState(() => _dutySubmitting = false);
       return;
     }
 
+    // Closing selfie, the counterpart to the one taken at the start. Optional,
+    // so skipping it still ends the duty.
+    final selfie = await _capture('closing selfie');
+    final endKm = await _askKm('Closing odometer');
+
     try {
       final res = await ApiService().postMultipart(
           'marketing/duty-end',
-          {},
-          File(photo.path),
-          fileField: 'odometer_photo'
+          {if (endKm != null && endKm.isNotEmpty) 'end_km': endKm},
+          odometer,
+          fileField: 'odometer_photo',
+          extraFiles: selfie == null ? null : {'selfie': selfie},
       );
 
       if (mounted && res['success'] == true) {

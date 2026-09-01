@@ -3,10 +3,247 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
+
+/// What the isolate needs to turn a photo into the model's input.
+///
+/// Only plain values: this crosses an isolate boundary, so nothing here may
+/// hold a platform channel, a File handle or a ML Kit object.
+class FacePrepRequest {
+  final Uint8List bytes;
+  final double boxLeft, boxTop, boxWidth, boxHeight;
+  final double? leftEyeX, leftEyeY, rightEyeX, rightEyeY;
+  final int inputSize;
+  final double minFaceFraction;
+
+  const FacePrepRequest({
+    required this.bytes,
+    required this.boxLeft,
+    required this.boxTop,
+    required this.boxWidth,
+    required this.boxHeight,
+    required this.leftEyeX,
+    required this.leftEyeY,
+    required this.rightEyeX,
+    required this.rightEyeY,
+    required this.inputSize,
+    required this.minFaceFraction,
+  });
+}
+
+/// Either the prepared face as raw RGB, or why it could not be produced.
+class FacePrepResult {
+  final Uint8List? rgb;
+  final String? failure;
+  const FacePrepResult.ok(this.rgb) : failure = null;
+  const FacePrepResult.failed(this.failure) : rgb = null;
+}
+
+/// Decodes, aligns and crops the face — entirely off the UI thread.
+///
+/// Must stay a top-level function: compute() cannot take a closure or a method.
+///
+/// This is where nearly all the cost of face verification lives. Run on the UI
+/// thread it froze the app for seconds on a full-resolution photo — long enough
+/// for Android to raise "isn't responding", and long enough that taps on the
+/// check-in button were dropped rather than queued.
+FacePrepResult prepareFaceForModel(FacePrepRequest req) {
+  try {
+    final decoded = img.decodeImage(req.bytes);
+    if (decoded == null) return const FacePrepResult.failed('unreadable');
+
+    final frameArea = decoded.width * decoded.height;
+    final faceArea = req.boxWidth * req.boxHeight;
+    if (faceArea / frameArea < req.minFaceFraction * req.minFaceFraction) {
+      return const FacePrepResult.failed('tooSmall');
+    }
+
+    // Work at a bounded size. Rotating a 12-megapixel image to level the eyes
+    // cost about 3.2 seconds; doing it at this size costs a fraction, and the
+    // model only ever sees a 112x112 crop, so the detail is not wanted.
+    var work = decoded;
+    var scale = 1.0;
+    final longest = math.max(decoded.width, decoded.height);
+    if (longest > _maxWorkingEdge) {
+      scale = _maxWorkingEdge / longest;
+      work = img.copyResize(
+        decoded,
+        width: (decoded.width * scale).round(),
+        height: (decoded.height * scale).round(),
+        interpolation: img.Interpolation.average,
+      );
+    }
+
+    // Every coordinate ML Kit gave us is in full-resolution space.
+    final box = Rect.fromLTWH(
+      req.boxLeft * scale,
+      req.boxTop * scale,
+      req.boxWidth * scale,
+      req.boxHeight * scale,
+    );
+
+    img.Image? face;
+    if (req.leftEyeX != null && req.rightEyeX != null) {
+      face = alignFaceByEyes(
+        work,
+        math.Point<double>(req.leftEyeX! * scale, req.leftEyeY! * scale),
+        math.Point<double>(req.rightEyeX! * scale, req.rightEyeY! * scale),
+        req.inputSize,
+      );
+    }
+    face ??= cropFaceBox(work, box, req.inputSize);
+
+    // Raw RGB, three bytes per pixel: a flat list crosses the isolate boundary
+    // far more cheaply than an Image object.
+    final out = Uint8List(req.inputSize * req.inputSize * 3);
+    var i = 0;
+    for (var y = 0; y < req.inputSize; y++) {
+      for (var x = 0; x < req.inputSize; x++) {
+        final px = face.getPixel(x, y);
+        out[i++] = px.r.toInt();
+        out[i++] = px.g.toInt();
+        out[i++] = px.b.toInt();
+      }
+    }
+    return FacePrepResult.ok(out);
+  } catch (_) {
+    return const FacePrepResult.failed('failed');
+  }
+}
+
+/// Largest edge the alignment works at. Big enough that a face still has plenty
+/// of detail for a 112x112 crop, small enough that rotating is cheap.
+const int _maxWorkingEdge = 1000;
+
+/// Canonical positions MobileFaceNet and its relatives are trained on:
+/// in a 112x112 crop the eyes sit level, at these coordinates.
+const double _canonEyeY = 51.69 / 112;      // 0.4615 down the crop
+const double _canonEyeX = 55.91 / 112;      // midway across
+const double _canonEyeGap = 35.24 / 112;    // eye separation
+
+/// Produces the 112x112 face the model expects.
+///
+/// Prefers aligning by the eyes. These models are trained on faces warped so
+/// the eyes are level and always in the same place, and feeding them a plain
+/// bounding-box crop instead costs a great deal of accuracy — enough that two
+/// photos of the same person taken minutes apart can fail to match. Rotating
+/// the eye line level and framing on the eyes recovers that.
+///
+/// Falls back to the bounding box when ML Kit gives no eye positions, which
+/// it sometimes does at an extreme angle. A slightly worse crop still beats
+/// refusing to process the photo at all.
+/// Rotates the eye line level, then frames a square around the eyes.
+///
+/// Returns null when the eyes are implausibly close together, which means the
+/// landmarks are wrong rather than the face being small.
+img.Image? alignFaceByEyes(img.Image source, math.Point<double> eyeA,
+  math.Point<double> eyeB, int inputSize) {
+  // Order by x, so "left" always means left-of-frame regardless of which eye
+  // ML Kit labelled which.
+  final l = eyeA.x <= eyeB.x ? eyeA : eyeB;
+  final r = eyeA.x <= eyeB.x ? eyeB : eyeA;
+
+  final dx = r.x - l.x;
+  final dy = r.y - l.y;
+  final gap = math.sqrt(dx * dx + dy * dy);
+  if (gap < 8) return null;
+
+  // copyRotate turns the image clockwise for a positive angle, so this is the
+  // turn that brings the eye line to horizontal.
+  final theta = math.atan2(-dy, dx);
+  final rotated = theta.abs() < 0.01
+      ? source
+      : img.copyRotate(source, angle: theta * 180 / math.pi,
+          interpolation: img.Interpolation.linear);
+
+  // Where the eye midpoint ended up. copyRotate turns about the centre and
+  // grows the canvas to fit, so the old centre maps to the new centre.
+  final eyeMid = math.Point<double>((l.x + r.x) / 2, (l.y + r.y) / 2);
+  final moved = rotatePointAbout(
+    eyeMid,
+    math.Point<double>(source.width / 2, source.height / 2),
+    math.Point<double>(rotated.width / 2, rotated.height / 2),
+    theta,
+  );
+
+  // The eye separation fixes the scale: it is a known fraction of the crop.
+  final boxSize = (gap / _canonEyeGap).round();
+  if (boxSize < 16) return null;
+
+  final cropX = (moved.x - _canonEyeX * boxSize).round();
+  final cropY = (moved.y - _canonEyeY * boxSize).round();
+
+  return img.copyResize(
+    cutOutSquare(rotated, cropX, cropY, boxSize),
+    width: inputSize,
+    height: inputSize,
+    interpolation: img.Interpolation.cubic,
+  );
+}
+
+/// Rotates [p] about [from], expressed relative to [to]. Screen coordinates,
+/// y downwards, positive angle clockwise — matching copyRotate.
+math.Point<double> rotatePointAbout(
+    math.Point<double> p, math.Point<double> from, math.Point<double> to, double theta) {
+  final dx = p.x - from.x;
+  final dy = p.y - from.y;
+  final cos = math.cos(theta);
+  final sin = math.sin(theta);
+  return math.Point<double>(
+    to.x + dx * cos - dy * sin,
+    to.y + dx * sin + dy * cos,
+  );
+}
+
+/// A square region, padded with black where it runs past the edge.
+///
+/// Clamping the box instead would shift the face off its canonical position,
+/// which is the very thing alignment is for; padding keeps the geometry and
+/// simply admits there were no pixels there.
+img.Image cutOutSquare(img.Image source, int x, int y, int size) {
+  final canvas = img.Image(width: size, height: size);
+  img.fill(canvas, color: img.ColorRgb8(0, 0, 0));
+
+  final startX = math.max(0, x);
+  final startY = math.max(0, y);
+  final endX = math.min(source.width, x + size);
+  final endY = math.min(source.height, y + size);
+  if (endX <= startX || endY <= startY) return canvas;
+
+  final piece = img.copyCrop(source,
+      x: startX, y: startY, width: endX - startX, height: endY - startY);
+  img.compositeImage(canvas, piece, dstX: startX - x, dstY: startY - y);
+  return canvas;
+}
+
+/// Crops to the face with a margin, then resizes to what the model expects.
+///
+/// The margin matters: models of this kind are trained on faces framed with a
+/// little forehead and chin, and a tight crop measurably degrades the match.
+img.Image cropFaceBox(img.Image source, Rect box, int inputSize) {
+  final marginX = box.width * 0.15;
+  final marginY = box.height * 0.15;
+
+  var x = (box.left - marginX).round();
+  var y = (box.top - marginY).round();
+  var w = (box.width + marginX * 2).round();
+  var h = (box.height + marginY * 2).round();
+
+  // Clamp into the image, since the margin can push the box off the edge.
+  x = x.clamp(0, source.width - 1);
+  y = y.clamp(0, source.height - 1);
+  w = w.clamp(1, source.width - x);
+  h = h.clamp(1, source.height - y);
+
+  final cropped = img.copyCrop(source, x: x, y: y, width: w, height: h);
+  return img.copyResize(cropped,
+      width: inputSize, height: inputSize, interpolation: img.Interpolation.cubic);
+}
+
 
 /// Why a face could not be turned into an embedding.
 ///
@@ -77,7 +314,14 @@ class FaceEmbeddingService {
 
   int get embeddingLength => _embeddingLength;
 
-  String get modelVersion => 'mobilefacenet_${_embeddingLength}d';
+  /// Stamped onto a template at enrollment.
+  ///
+  /// The 'aligned' part is what tells the server this template was built from
+  /// an eye-aligned crop rather than a plain bounding box. Templates without it
+  /// are still compared but never used to refuse a check-in, so verification
+  /// could stay switched on while this version reached every phone. Do not drop
+  /// the marker: it is the whole basis of that distinction.
+  String get modelVersion => 'mobilefacenet_${_embeddingLength}d_aligned';
 
   /// Loads the model. Safe to call repeatedly; the work happens once.
   Future<bool> initialise() async {
@@ -189,23 +433,6 @@ class FaceEmbeddingService {
         .compareTo(a.boundingBox.width * a.boundingBox.height));
     final face = faces.first;
 
-    // Upright already: package:image's JPEG decoder applies the EXIF
-    // orientation itself and clears the tag, which is the same frame ML Kit
-    // reports its bounding box in. No baking needed here — see
-    // test/face_orientation_test.dart, which pins that behaviour.
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) {
-      return const FaceResult.failed(
-        FaceFailure.unreadableImage, 'Could not read the photo. Please try again.');
-    }
-
-    final frameArea = decoded.width * decoded.height;
-    final faceArea = face.boundingBox.width * face.boundingBox.height;
-    if (faceArea / frameArea < _minFaceFraction * _minFaceFraction) {
-      return const FaceResult.failed(
-        FaceFailure.faceTooSmall, 'Move closer so your face fills more of the frame.');
-    }
-
     if (strict) {
       final left = face.leftEyeOpenProbability;
       final right = face.rightEyeOpenProbability;
@@ -224,10 +451,53 @@ class FaceEmbeddingService {
       }
     }
 
+    // Decoding, aligning and cropping happen on a background isolate. They are
+    // pure Dart and were the whole cost of face verification — seconds of a
+    // frozen UI on a full-resolution photo. ML Kit above and the interpreter
+    // below both stay here: the detector is a platform channel, and the
+    // interpreter cannot be handed to another isolate.
+    final left = face.landmarks[FaceLandmarkType.leftEye]?.position;
+    final right = face.landmarks[FaceLandmarkType.rightEye]?.position;
+
+    final FacePrepResult prep;
     try {
-      final crop = _prepareFace(decoded, face);
-      final embedding = _runModel(crop);
-      return FaceResult.success(embedding);
+      prep = await compute(
+        prepareFaceForModel,
+        FacePrepRequest(
+          bytes: bytes,
+          boxLeft: face.boundingBox.left,
+          boxTop: face.boundingBox.top,
+          boxWidth: face.boundingBox.width,
+          boxHeight: face.boundingBox.height,
+          leftEyeX: left?.x.toDouble(),
+          leftEyeY: left?.y.toDouble(),
+          rightEyeX: right?.x.toDouble(),
+          rightEyeY: right?.y.toDouble(),
+          inputSize: _inputSize,
+          minFaceFraction: _minFaceFraction,
+        ),
+      );
+    } catch (_) {
+      return const FaceResult.failed(
+        FaceFailure.inferenceFailed, 'Face could not be processed. Please try again.');
+    }
+
+    if (prep.rgb == null) {
+      switch (prep.failure) {
+        case 'tooSmall':
+          return const FaceResult.failed(FaceFailure.faceTooSmall,
+              'Move closer so your face fills more of the frame.');
+        case 'unreadable':
+          return const FaceResult.failed(FaceFailure.unreadableImage,
+              'Could not read the photo. Please try again.');
+        default:
+          return const FaceResult.failed(FaceFailure.inferenceFailed,
+              'Face could not be processed. Please try again.');
+      }
+    }
+
+    try {
+      return FaceResult.success(_runModel(prep.rgb!));
     } catch (_) {
       return const FaceResult.failed(
         FaceFailure.inferenceFailed, 'Face could not be processed. Please try again.');
@@ -242,158 +512,28 @@ class FaceEmbeddingService {
     }
   }
 
-  /// Canonical positions MobileFaceNet and its relatives are trained on:
-  /// in a 112x112 crop the eyes sit level, at these coordinates.
-  static const double _canonEyeY = 51.69 / 112;      // 0.4615 down the crop
-  static const double _canonEyeX = 55.91 / 112;      // midway across
-  static const double _canonEyeGap = 35.24 / 112;    // eye separation
-
-  /// Produces the 112x112 face the model expects.
+  /// Runs the model over the face the isolate prepared.
   ///
-  /// Prefers aligning by the eyes. These models are trained on faces warped so
-  /// the eyes are level and always in the same place, and feeding them a plain
-  /// bounding-box crop instead costs a great deal of accuracy — enough that two
-  /// photos of the same person taken minutes apart can fail to match. Rotating
-  /// the eye line level and framing on the eyes recovers that.
-  ///
-  /// Falls back to the bounding box when ML Kit gives no eye positions, which
-  /// it sometimes does at an extreme angle. A slightly worse crop still beats
-  /// refusing to process the photo at all.
-  img.Image _prepareFace(img.Image source, Face face) {
-    final left = face.landmarks[FaceLandmarkType.leftEye]?.position;
-    final right = face.landmarks[FaceLandmarkType.rightEye]?.position;
-    if (left == null || right == null) return _cropFace(source, face.boundingBox);
-
-    final aligned = _alignByEyes(
-      source,
-      math.Point<double>(left.x.toDouble(), left.y.toDouble()),
-      math.Point<double>(right.x.toDouble(), right.y.toDouble()),
-    );
-    return aligned ?? _cropFace(source, face.boundingBox);
-  }
-
-  /// Rotates the eye line level, then frames a square around the eyes.
-  ///
-  /// Returns null when the eyes are implausibly close together, which means the
-  /// landmarks are wrong rather than the face being small.
-  img.Image? _alignByEyes(img.Image source, math.Point<double> eyeA, math.Point<double> eyeB) {
-    // Order by x, so "left" always means left-of-frame regardless of which eye
-    // ML Kit labelled which.
-    final l = eyeA.x <= eyeB.x ? eyeA : eyeB;
-    final r = eyeA.x <= eyeB.x ? eyeB : eyeA;
-
-    final dx = r.x - l.x;
-    final dy = r.y - l.y;
-    final gap = math.sqrt(dx * dx + dy * dy);
-    if (gap < 8) return null;
-
-    // copyRotate turns the image clockwise for a positive angle, so this is the
-    // turn that brings the eye line to horizontal.
-    final theta = math.atan2(-dy, dx);
-    final rotated = theta.abs() < 0.01
-        ? source
-        : img.copyRotate(source, angle: theta * 180 / math.pi,
-            interpolation: img.Interpolation.linear);
-
-    // Where the eye midpoint ended up. copyRotate turns about the centre and
-    // grows the canvas to fit, so the old centre maps to the new centre.
-    final eyeMid = math.Point<double>((l.x + r.x) / 2, (l.y + r.y) / 2);
-    final moved = _rotatePoint(
-      eyeMid,
-      math.Point<double>(source.width / 2, source.height / 2),
-      math.Point<double>(rotated.width / 2, rotated.height / 2),
-      theta,
-    );
-
-    // The eye separation fixes the scale: it is a known fraction of the crop.
-    final boxSize = (gap / _canonEyeGap).round();
-    if (boxSize < 16) return null;
-
-    final cropX = (moved.x - _canonEyeX * boxSize).round();
-    final cropY = (moved.y - _canonEyeY * boxSize).round();
-
-    return img.copyResize(
-      _cutOut(rotated, cropX, cropY, boxSize),
-      width: _inputSize,
-      height: _inputSize,
-      interpolation: img.Interpolation.cubic,
-    );
-  }
-
-  /// Rotates [p] about [from], expressed relative to [to]. Screen coordinates,
-  /// y downwards, positive angle clockwise — matching copyRotate.
-  math.Point<double> _rotatePoint(
-      math.Point<double> p, math.Point<double> from, math.Point<double> to, double theta) {
-    final dx = p.x - from.x;
-    final dy = p.y - from.y;
-    final cos = math.cos(theta);
-    final sin = math.sin(theta);
-    return math.Point<double>(
-      to.x + dx * cos - dy * sin,
-      to.y + dx * sin + dy * cos,
-    );
-  }
-
-  /// A square region, padded with black where it runs past the edge.
-  ///
-  /// Clamping the box instead would shift the face off its canonical position,
-  /// which is the very thing alignment is for; padding keeps the geometry and
-  /// simply admits there were no pixels there.
-  img.Image _cutOut(img.Image source, int x, int y, int size) {
-    final canvas = img.Image(width: size, height: size);
-    img.fill(canvas, color: img.ColorRgb8(0, 0, 0));
-
-    final startX = math.max(0, x);
-    final startY = math.max(0, y);
-    final endX = math.min(source.width, x + size);
-    final endY = math.min(source.height, y + size);
-    if (endX <= startX || endY <= startY) return canvas;
-
-    final piece = img.copyCrop(source,
-        x: startX, y: startY, width: endX - startX, height: endY - startY);
-    img.compositeImage(canvas, piece, dstX: startX - x, dstY: startY - y);
-    return canvas;
-  }
-
-  /// Crops to the face with a margin, then resizes to what the model expects.
-  ///
-  /// The margin matters: models of this kind are trained on faces framed with a
-  /// little forehead and chin, and a tight crop measurably degrades the match.
-  img.Image _cropFace(img.Image source, Rect box) {
-    final marginX = box.width * 0.15;
-    final marginY = box.height * 0.15;
-
-    var x = (box.left - marginX).round();
-    var y = (box.top - marginY).round();
-    var w = (box.width + marginX * 2).round();
-    var h = (box.height + marginY * 2).round();
-
-    // Clamp into the image, since the margin can push the box off the edge.
-    x = x.clamp(0, source.width - 1);
-    y = y.clamp(0, source.height - 1);
-    w = w.clamp(1, source.width - x);
-    h = h.clamp(1, source.height - y);
-
-    final cropped = img.copyCrop(source, x: x, y: y, width: w, height: h);
-    return img.copyResize(cropped,
-        width: _inputSize, height: _inputSize, interpolation: img.Interpolation.cubic);
-  }
-
-  List<double> _runModel(img.Image face) {
+  /// [rgb] is inputSize x inputSize pixels, three bytes each, row by row.
+  List<double> _runModel(Uint8List rgb) {
     final interpreter = _interpreter!;
 
     // [1, size, size, 3] normalised to -1..1, which is what MobileFaceNet and
     // its relatives are trained on.
+    // Indexed from x and y rather than a running counter: relying on the order
+    // List.generate happens to call its callback would be a silent corruption
+    // if that ever changed.
     final input = List.generate(
       1,
       (_) => List.generate(
         _inputSize,
         (y) => List.generate(_inputSize, (x) {
-          final p = face.getPixel(x, y);
+          final i = (y * _inputSize + x) * 3;
+          final r = rgb[i], g = rgb[i + 1], b = rgb[i + 2];
           return [
-            (p.r - 127.5) / 127.5,
-            (p.g - 127.5) / 127.5,
-            (p.b - 127.5) / 127.5,
+            (r - 127.5) / 127.5,
+            (g - 127.5) / 127.5,
+            (b - 127.5) / 127.5,
           ];
         }),
       ),

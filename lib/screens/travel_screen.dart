@@ -682,6 +682,8 @@ class _TravelScreenState extends State<TravelScreen> with SingleTickerProviderSt
     File? endPhoto;
     bool submitting = false;
 
+    // Disposed when the sheet closes: these belong to it, not to this State,
+    // so dispose() would never reach them.
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -790,7 +792,10 @@ class _TravelScreenState extends State<TravelScreen> with SingleTickerProviderSt
           ),
         ),
       ),
-    );
+    ).whenComplete(() {
+      endKmCtrl.dispose();
+      endLocationCtrl.dispose();
+    });
   }
 
   Future<void> _submitCompletion(

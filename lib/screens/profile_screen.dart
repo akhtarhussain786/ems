@@ -11,6 +11,7 @@ import '../utils/profile_image.dart';
 import '../widgets/update_dialog.dart';
 import 'face_enrollment_screen.dart';
 import 'help_screen.dart';
+import 'login_screen.dart';
 import 'salary_report_screen.dart';
 import 'attendance_report_screen.dart';
 import 'home_screen.dart';
@@ -229,6 +230,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (mounted) _showSnack('Error: $e', error: true);
     }
+
+    // Dialog-scoped, so released here rather than in dispose().
+    mobileCtrl.dispose();
+    addressCtrl.dispose();
+    cityCtrl.dispose();
+    stateCtrl.dispose();
+    pincodeCtrl.dispose();
   }
 
   Future<void> _changePhoto() async {
@@ -332,6 +340,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (mounted) _showSnack('Error: $e', error: true);
     }
+
+    // These belong to the dialog rather than to this State, so they are
+    // released here once it has closed instead of in dispose(). Without this,
+    // every visit to Change Password leaked three controllers.
+    currentCtrl.dispose();
+    newCtrl.dispose();
+    confirmCtrl.dispose();
   }
 
   @override
@@ -755,6 +770,23 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+
+  /// Ends the session and returns to the login screen.
+  ///
+  /// ApiService.logout() tells the server first so the session row is closed —
+  /// which is what stops the token still working elsewhere — then clears the
+  /// token locally even if that call failed, because an expired or offline
+  /// session must still log out on the device.
+  Future<void> _logout() async {
+    await ApiService().logout();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+  }
+
   String? _profileImagePath;
   late Map<String, dynamic> _userData;
   final ImagePicker _picker = ImagePicker();
@@ -1263,13 +1295,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ElevatedButton(
                               onPressed: () {
                                 Navigator.pop(context);
-                                // TODO: Implement logout logic
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Logging out...'),
-                                    backgroundColor: Colors.blue,
-                                  ),
-                                );
+                                // This used to show "Logging out..." and stop
+                                // there — the TODO was never finished, so the
+                                // button confirmed a logout that never happened
+                                // and the session stayed open.
+                                _logout();
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.red,

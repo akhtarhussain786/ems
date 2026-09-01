@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../services/api_service.dart';
 import '../services/face_embedding_service.dart';
+import '../services/location_service.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
 import 'home_screen.dart';
@@ -33,6 +34,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   /// Face read from the selfie, sent with the check-in so the server can
   /// confirm the person clocking in is the one signed in.
   List<double>? _faceEmbedding;
+
+  /// True while the selfie is being read and compressed. The button used to
+  /// go live the moment the photo path was set, so a quick tap submitted a
+  /// check-in with no compressed image and no face — the selfie silently
+  /// missing and face verification silently skipped.
+  bool _preparingPhoto = false;
+
+  /// The office location, fetched once. A provisional fix and the precise fix
+  /// that follows it each re-check the distance; without this that was two
+  /// round trips for a value that cannot change between them.
+  Map<String, dynamic>? _officeCache;
   double? _latitude;
   double? _longitude;
   String _address = '';
@@ -155,19 +167,38 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     }
 
     try {
-      Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 15),
-        ),
+      // Unblocks the screen on the first usable fix — typically a cached or
+      // wifi-derived one, in about a second — rather than holding it for up to
+      // fifteen while GPS tries to see the sky from indoors. A precise fix runs
+      // alongside and quietly replaces the coordinates if it arrives in time.
+      final position = await LocationService.acquire(
+        onProvisional: (p) {
+          if (!mounted) return;
+          setState(() {
+            _latitude = p.latitude;
+            _longitude = p.longitude;
+          });
+          _checkLocation();
+        },
       );
 
-      setState(() {
-        _latitude = position.latitude;
-        _longitude = position.longitude;
-      });
+      if (!mounted) return;
 
-      await _checkLocation();
+      if (position == null && _latitude == null) {
+        setState(() {
+          _error = 'Could not get your location. Check that GPS is on.';
+          _locationLoading = false;
+        });
+        return;
+      }
+
+      if (position != null) {
+        setState(() {
+          _latitude = position.latitude;
+          _longitude = position.longitude;
+        });
+        await _checkLocation();
+      }
     } catch (e) {
       setState(() {
         _error = 'Failed to get location: $e';
@@ -190,10 +221,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       }
 
       // Office staff: Check location
-      final res = await ApiService().getOfficeSettings();
+      final res = _officeCache ?? await ApiService().getOfficeSettings();
       if (!mounted) return;
 
       if (res['success'] == true) {
+        _officeCache = res;
         final office = res['data']?['office'];
         if (office != null) {
           final officeLat = double.parse(office['latitude'].toString());
@@ -244,6 +276,26 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     }
   }
 
+  /// One compression attempt. Returns null if it fails or produces nothing,
+  /// so the caller can try again with harsher settings.
+  Future<File?> _compress(String source,
+      {required int quality, required int width, required int height}) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final target = '${dir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}_$quality.jpg';
+      final out = await FlutterImageCompress.compressAndGetFile(
+        source, target,
+        minWidth: width,
+        minHeight: height,
+        quality: quality,
+      );
+      return out == null ? null : File(out.path);
+    } catch (e) {
+      print('🔴 Compression attempt failed (q=$quality): $e');
+      return null;
+    }
+  }
+
   Future<void> _capturePhoto() async {
     final picker = ImagePicker();
     final XFile? photo = await picker.pickImage(
@@ -260,34 +312,53 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         _photoPath = photo.path;
         _photoBase64 = null;
         _faceEmbedding = null;
+        _preparingPhoto = true;
       });
 
-      // Read from the selfie that is being taken anyway, so face verification
-      // adds nothing for the employee to do. Computed from the original file
-      // rather than the compressed one, which is sized for upload, not for
-      // recognising a face.
-      await _extractFace(File(photo.path));
-
+      // The gate above must come back down on every path out of here — an
+      // exception left it raised, and the button would never enable again.
       try {
-        final dir = await getTemporaryDirectory();
-        final targetPath = '${dir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        // Read from the selfie that is being taken anyway, so face verification
+        // adds nothing for the employee to do. Computed from the original file
+        // rather than the compressed one, which is sized for upload, not for
+        // recognising a face.
+        await _extractFace(File(photo.path));
 
-        print('🟢 Compressing image...');
-        final compressed = await FlutterImageCompress.compressAndGetFile(
-          photo.path, targetPath,
-          minWidth: 480,
-          minHeight: 640,
-          quality: 60,
-        );
+        // Compression is what keeps a check-in uploadable on a field connection.
+        // When it failed, this quietly fell back to the untouched camera file —
+        // on some handsets over a megabyte — and the upload then ran past the
+        // timeout and the attendance was lost. So a failure is retried harder
+        // before giving up, and the employee is told if it could not be shrunk.
+        final compressed = await _compress(photo.path, quality: 60, width: 480, height: 640)
+            ?? await _compress(photo.path, quality: 35, width: 360, height: 480);
 
         if (compressed != null) {
           final bytes = await compressed.readAsBytes();
           print('🟢 Compressed size: ${bytes.length} bytes');
-          setState(() => _photoBase64 = base64Encode(bytes));
-          setState(() => _photoPath = compressed.path);
+          setState(() {
+            _photoBase64 = base64Encode(bytes);
+            _photoPath = compressed.path;
+          });
+        } else if (mounted) {
+          // The original still uploads — better a slow check-in than none — but
+          // this no longer happens silently.
+          final size = await File(photo.path).length();
+          print('🔴 Compression failed; sending the original (${size ~/ 1024} KB)');
+          if (size > 600 * 1024) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Photo could not be compressed — upload may be slow on a weak signal.'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
         }
       } catch (e) {
-        print('🔴 Compression error: $e');
+        print('🔴 Photo preparation failed: $e');
+      } finally {
+        // Only now is there something complete to send.
+        if (mounted) setState(() => _preparingPhoto = false);
       }
     }
   }
@@ -369,9 +440,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
           ),
         );
 
-        await _fetchTodayAttendance();
+        // The check-in response already carries the status, times, lateness and
+        // photo, so re-fetching them was a second round trip for facts already
+        // in hand — on a field connection that alone was seconds of the screen
+        // looking like nothing had happened.
+        final data = response['data'];
+        if (data is Map) {
+          setState(() => _todayAttendance = Map<String, dynamic>.from(data));
+        }
 
-        Future.delayed(const Duration(milliseconds: 1500), () {
+        // Long enough to see the tick, short enough not to feel stuck. The
+        // snackbar follows to the previous screen, so nothing is missed.
+        Future.delayed(const Duration(milliseconds: 400), () {
           if (mounted) {
             _safePop();
           }
@@ -1307,7 +1387,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   // ==================== SUBMIT BUTTON ====================
   Widget _buildSubmitButton(bool isCheckIn) {
     // ✅ FIXED: Field staff can submit even if outside
-    final enabled = !_loading && (_withinRange || _isFieldStaff) && _photoPath != null;
+    // _latitude is required: checkIn/checkOut take a non-nullable double, so
+    // enabling this without a fix meant a null-check crash on submit — which
+    // field staff, who bypass the range check, could reach with no fix at all.
+    final enabled = !_loading &&
+        !_preparingPhoto &&
+        (_withinRange || _isFieldStaff) &&
+        _photoPath != null &&
+        _latitude != null &&
+        _longitude != null;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -1328,7 +1416,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
       ),
       child: ElevatedButton.icon(
         onPressed: enabled ? _submit : null,
-        icon: _loading
+        icon: (_loading || _preparingPhoto)
             ? const SizedBox(
           width: 24,
           height: 24,
@@ -1344,6 +1432,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         label: Text(
           _loading
               ? 'Processing...'
+              : _preparingPhoto
+              ? 'Preparing photo...'
               : isCheckIn
               ? 'Confirm Check In'
               : 'Confirm Check Out',
