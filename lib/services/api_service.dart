@@ -728,6 +728,13 @@ class ApiService {
       'model_version': modelVersion,
     });
   }
+
+  // ============================================================
+  // ✅ EXCEL / CSV REPORT EXPORTS
+  // ============================================================
+  Future<Map<String, dynamic>> exportReportData(Map<String, dynamic> data) async {
+    return post('reports/export_data', data);
+  }
 }
 
 class UnauthorizedException implements Exception {

@@ -64,6 +64,7 @@ class DeptNavHelper {
         DeptFeature.leaveManagement,
         DeptFeature.leads, DeptFeature.campaigns, DeptFeature.marketing,
         DeptFeature.dailyWorkReport, DeptFeature.travel, DeptFeature.expenses,
+        DeptFeature.downloads,
       ];
     }
 
@@ -72,7 +73,7 @@ class DeptNavHelper {
       return [
         DeptFeature.leaveManagement,
         DeptFeature.telecaller, DeptFeature.callReports, DeptFeature.followUps,
-        DeptFeature.dailyWorkReport,
+        DeptFeature.dailyWorkReport, DeptFeature.downloads,
       ];
     }
 
@@ -82,7 +83,7 @@ class DeptNavHelper {
         DeptFeature.leaveManagement,
         DeptFeature.salesPipeline, DeptFeature.followUps, DeptFeature.marketing,
         DeptFeature.travel, DeptFeature.expenses, DeptFeature.dailyWorkReport,
-        DeptFeature.leads, DeptFeature.leadDetail
+        DeptFeature.leads, DeptFeature.leadDetail, DeptFeature.downloads,
       ];
     }
 
@@ -92,7 +93,7 @@ class DeptNavHelper {
         DeptFeature.leaveManagement,
         DeptFeature.hrActivities, DeptFeature.dailyWorkReport, DeptFeature.documents,
         DeptFeature.notices, DeptFeature.notifications,
-        DeptFeature.salaryReport
+        DeptFeature.salaryReport, DeptFeature.downloads,
       ];
     }
 
@@ -102,7 +103,7 @@ class DeptNavHelper {
         DeptFeature.leaveManagement,
         DeptFeature.expenses, DeptFeature.dailyWorkReport, DeptFeature.documents,
         DeptFeature.notices,
-        DeptFeature.salaryReport
+        DeptFeature.salaryReport, DeptFeature.downloads,
       ];
     }
 
@@ -111,7 +112,7 @@ class DeptNavHelper {
       return [
         DeptFeature.leaveManagement,
         DeptFeature.tasks, DeptFeature.dailyWorkReport, DeptFeature.notices,
-        DeptFeature.meetings, DeptFeature.chat,
+        DeptFeature.meetings, DeptFeature.chat, DeptFeature.downloads,
       ];
     }
 
@@ -127,14 +128,14 @@ class DeptNavHelper {
           DeptFeature.tasks,
           DeptFeature.dailyWorkReport, DeptFeature.itTeam, DeptFeature.documents,
           DeptFeature.notices, DeptFeature.meetings, DeptFeature.chat,
-          DeptFeature.notifications,
+          DeptFeature.notifications, DeptFeature.downloads,
         ];
       case 'hr':
         return [
           DeptFeature.leaveManagement,
           DeptFeature.hrActivities, DeptFeature.dailyWorkReport, DeptFeature.documents,
           DeptFeature.notices, DeptFeature.notifications,
-          DeptFeature.salaryReport
+          DeptFeature.salaryReport, DeptFeature.downloads,
         ];
       case 'digital marketing':
       case 'marketing':
@@ -142,27 +143,27 @@ class DeptNavHelper {
           DeptFeature.leaveManagement,
           DeptFeature.marketing, DeptFeature.leads, DeptFeature.campaigns,
           DeptFeature.dailyWorkReport, DeptFeature.travel, DeptFeature.expenses,
-          DeptFeature.leadDetail
+          DeptFeature.leadDetail, DeptFeature.downloads,
         ];
       case 'telecaller':
         return [
           DeptFeature.leaveManagement,
           DeptFeature.telecaller, DeptFeature.callReports, DeptFeature.followUps,
-          DeptFeature.dailyWorkReport,
+          DeptFeature.dailyWorkReport, DeptFeature.downloads,
         ];
       case 'accounts':
         return [
           DeptFeature.leaveManagement,
           DeptFeature.expenses, DeptFeature.dailyWorkReport, DeptFeature.documents,
           DeptFeature.notices,
-          DeptFeature.salaryReport
+          DeptFeature.salaryReport, DeptFeature.downloads,
         ];
       case 'sales':
         return [
           DeptFeature.leaveManagement,
           DeptFeature.salesPipeline, DeptFeature.followUps, DeptFeature.marketing,
           DeptFeature.travel, DeptFeature.expenses, DeptFeature.dailyWorkReport,
-          DeptFeature.leads, DeptFeature.leadDetail
+          DeptFeature.leads, DeptFeature.leadDetail, DeptFeature.downloads,
         ];
       default:
         return [

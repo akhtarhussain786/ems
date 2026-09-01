@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 
@@ -19,6 +20,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
   String? _error;
   String _callStatus = 'No Answer';
   DateTime? _followUpDate;
+  DateTime? _selectedDate; // Null means all dates
   late Map<String, dynamic> _leadData;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -66,6 +68,25 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
     };
   }
 
+  /// Filter leads by the selected calendar creation date.
+  List<dynamic> get _filteredLeads {
+    if (_selectedDate == null) return _leadsList;
+    return _leadsList.where((l) {
+      if (l is! Map) return false;
+      final createdAt = l['created_at']?.toString() ?? '';
+      if (createdAt.isEmpty) return false;
+      try {
+        final dt = DateTime.parse(createdAt.contains(' ') ? createdAt.replaceAll(' ', 'T') : createdAt);
+        return dt.year == _selectedDate!.year &&
+            dt.month == _selectedDate!.month &&
+            dt.day == _selectedDate!.day;
+      } catch (_) {
+        final targetStr = DateFormat('yyyy-MM-dd').format(_selectedDate!);
+        return createdAt.startsWith(targetStr);
+      }
+    }).toList();
+  }
+
   Future<void> _fetchLeadsList() async {
     setState(() => _loadingLeads = true);
     try {
@@ -84,7 +105,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
         });
       }
     } catch (e) {
-      print('Error loading leads list: $e');
+      debugPrint('Error loading leads list: $e');
     } finally {
       if (mounted) setState(() => _loadingLeads = false);
     }
@@ -97,6 +118,59 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
       _error = null;
     });
     _fetchHistory();
+  }
+
+  void _onDateFilterChanged(DateTime? date) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedDate = date;
+      final filtered = _filteredLeads;
+      if (filtered.isNotEmpty) {
+        final currentId = _leadData['id'];
+        final exists = filtered.any((l) => l is Map && l['id'] == currentId);
+        if (!exists) {
+          final first = filtered.first;
+          if (first is Map) {
+            _leadData = Map<String, dynamic>.from(first);
+            _fetchHistory();
+          }
+        }
+      } else {
+        _leadData = _getDefaultLead();
+        _history = [];
+        _error = null;
+      }
+    });
+  }
+
+  Future<void> _pickCalendarDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      helpText: 'SELECT LEAD CREATION DATE',
+      confirmText: 'FILTER LEADS',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF1E3A5F),
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Color(0xFF1E3A5F),
+            ),
+            dialogTheme: DialogThemeData(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      _onDateFilterChanged(picked);
+    }
   }
 
   Future<void> _fetchHistory() async {
@@ -116,22 +190,16 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
       if (!mounted) return;
 
       if (res['success'] != true) {
-        // The API scopes a lead to its creator, its telecaller and admins, so a
-        // miss here means this user is not entitled to it.
         setState(() => _error = res['message']?.toString() ?? 'Lead not found');
         return;
       }
 
-      // `data` is an object of {lead, calls, follow_ups} — the previous code
-      // assigned the whole thing to the history List, which threw a TypeError
-      // that a bare catch swallowed, so history was always empty.
       final data = res['data'];
       if (data is! Map) return;
 
       setState(() {
         final lead = data['lead'];
         if (lead is Map) {
-          // Server copy wins: it carries the fields the list view never loads.
           _leadData = {..._leadData, ...Map<String, dynamic>.from(lead)};
         }
         _history = _mergeActivity(data['calls'], data['follow_ups']);
@@ -143,8 +211,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
     }
   }
 
-  /// Calls and follow-ups in one newest-first list, tagged so the timeline can
-  /// tell them apart.
+  /// Calls and follow-ups in one newest-first list, tagged so the timeline can tell them apart.
   List<dynamic> _mergeActivity(dynamic calls, dynamic followUps) {
     final merged = <Map<String, dynamic>>[];
 
@@ -174,15 +241,11 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
       return;
     }
 
-    // Clean the phone number - keep only digits
     String cleanedNumber = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
-
-    // Remove leading zeros
     if (cleanedNumber.startsWith('0')) {
       cleanedNumber = cleanedNumber.substring(1);
     }
 
-    // Check if it's a valid phone number
     if (cleanedNumber.length < 10) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -193,16 +256,12 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
       return;
     }
 
-    // Add country code if missing (India +91)
     if (cleanedNumber.length == 10) {
       cleanedNumber = '+91$cleanedNumber';
     } else if (!cleanedNumber.startsWith('+')) {
       cleanedNumber = '+$cleanedNumber';
     }
 
-    print('🔵 Attempting to call: $cleanedNumber');
-
-    // METHOD 1: Try Native Android Intent
     try {
       final bool result = await _channel.invokeMethod('makePhoneCall', {
         'number': cleanedNumber,
@@ -212,10 +271,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
         return;
       }
     } catch (e) {
-      print('🔴 Native method failed: $e');
+      debugPrint('Native dialer failed: $e');
     }
 
-    // METHOD 2: Try url_launcher with tel:
     try {
       final Uri phoneUri = Uri(scheme: 'tel', path: cleanedNumber);
       if (await canLaunchUrl(phoneUri)) {
@@ -224,10 +282,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
         return;
       }
     } catch (e) {
-      print('🔴 url_launcher tel: failed: $e');
+      debugPrint('url_launcher tel: failed: $e');
     }
 
-    // METHOD 3: Try with just numbers
     try {
       final String simpleNumber = cleanedNumber.replaceAll('+', '');
       final Uri simpleUri = Uri(scheme: 'tel', path: simpleNumber);
@@ -237,14 +294,12 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
         return;
       }
     } catch (e) {
-      print('🔴 Simple number failed: $e');
+      debugPrint('Simple number failed: $e');
     }
 
-    // ULTIMATE FALLBACK: Show dialog with number
     _showCallFallbackDialog(cleanedNumber);
   }
 
-  // ==================== FALLBACK DIALOG ====================
   void _showCallFallbackDialog(String phoneNumber) {
     showDialog(
       context: context,
@@ -359,7 +414,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
         return;
       }
     } catch (e) {
-      print('🔴 WhatsApp failed: $e');
+      debugPrint('WhatsApp failed: $e');
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -433,124 +488,534 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
     return 'Select a Lead';
   }
 
-  Widget _buildLeadSelectorCard() {
-    if (_loadingLeads && _leadsList.isEmpty) {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              height: 18,
-              width: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1E3A5F)),
-            ),
-            SizedBox(width: 10),
-            Text('Loading assigned leads...', style: TextStyle(fontSize: 13, color: Color(0xFF1E3A5F))),
-          ],
-        ),
-      );
+  String _formatDateTime(dynamic dateTimeStr) {
+    if (dateTimeStr == null) return 'N/A';
+    final s = dateTimeStr.toString().trim();
+    if (s.isEmpty || s == 'null') return 'N/A';
+    try {
+      final dt = DateTime.parse(s.contains(' ') ? s.replaceAll(' ', 'T') : s);
+      return DateFormat('dd MMM yyyy, hh:mm a').format(dt);
+    } catch (_) {
+      return s;
     }
+  }
 
-    if (_leadsList.isEmpty) return const SizedBox.shrink();
+  String _formatTime(dynamic dateTimeStr) {
+    if (dateTimeStr == null) return '';
+    final s = dateTimeStr.toString().trim();
+    if (s.isEmpty || s == 'null') return '';
+    try {
+      final dt = DateTime.parse(s.contains(' ') ? s.replaceAll(' ', 'T') : s);
+      return DateFormat('hh:mm a').format(dt);
+    } catch (_) {
+      return '';
+    }
+  }
 
+  String _formatDateShort(dynamic dateTimeStr) {
+    if (dateTimeStr == null) return '';
+    final s = dateTimeStr.toString().trim();
+    if (s.isEmpty || s == 'null') return '';
+    try {
+      final dt = DateTime.parse(s.contains(' ') ? s.replaceAll(' ', 'T') : s);
+      return DateFormat('dd MMM').format(dt);
+    } catch (_) {
+      return s;
+    }
+  }
+
+  // ==================== DATE & LEAD SELECTOR CARD ====================
+  Widget _buildDateAndLeadSelectorCard() {
+    final filtered = _filteredLeads;
     final currentId = _leadData['id'];
+    final isDateFilterActive = _selectedDate != null;
+
+    final isTodaySelected = _selectedDate != null &&
+        _selectedDate!.year == DateTime.now().year &&
+        _selectedDate!.month == DateTime.now().month &&
+        _selectedDate!.day == DateTime.now().day;
+
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    final isYesterdaySelected = _selectedDate != null &&
+        _selectedDate!.year == yesterday.year &&
+        _selectedDate!.month == yesterday.month &&
+        _selectedDate!.day == yesterday.day;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.08),
+            color: const Color(0xFF1E3A5F).withOpacity(0.06),
             spreadRadius: 1,
-            blurRadius: 12,
-            offset: const Offset(0, 3),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header: Calendar Icon & Filter title
           Row(
             children: [
-              const Icon(Icons.person_search_rounded, color: Color(0xFF1E3A5F), size: 18),
-              const SizedBox(width: 8),
-              const Text(
-                'Select Lead',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E3A5F),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Filter Leads by Creation Date',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E3A5F),
+                      ),
+                    ),
+                    Text(
+                      isDateFilterActive
+                          ? 'Created on ${DateFormat('dd MMM yyyy').format(_selectedDate!)}'
+                          : 'Showing all created leads',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E3A5F).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  color: const Color(0xFF1E3A5F).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${_leadsList.length} Leads',
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF1E3A5F), fontWeight: FontWeight.bold),
+                  '${filtered.length} Leads',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF1E3A5F),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<dynamic>(
-            value: _leadsList.any((l) => l['id'] == currentId) ? currentId : null,
-            hint: const Text('Choose a lead from the list...', style: TextStyle(fontSize: 13)),
-            isExpanded: true,
-            items: _leadsList.map((l) {
-              final id = l['id'];
-              final name = l['customer_name'] ?? l['first_name'] ?? 'Lead #$id';
-              final phone = l['customer_phone'] ?? l['phone'] ?? l['mobile'] ?? '';
-              final status = (l['status'] ?? 'New').toString();
-              return DropdownMenuItem<dynamic>(
-                value: id,
-                child: Text(
-                  '$name ($phone) - ${status.toUpperCase()}',
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF1E3A5F), fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis,
+          const SizedBox(height: 14),
+
+          // Date Filter Quick Chips & Calendar Picker
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                // "All Dates" chip
+                _buildDateChip(
+                  label: 'All Dates',
+                  isSelected: _selectedDate == null,
+                  icon: Icons.all_inclusive_rounded,
+                  onTap: () => _onDateFilterChanged(null),
                 ),
-              );
-            }).toList(),
-            onChanged: (selectedId) {
-              if (selectedId == null) return;
-              final found = _leadsList.firstWhere(
-                (l) => l['id'] == selectedId,
-                orElse: () => null,
-              );
-              if (found != null && found is Map) {
-                _selectLead(Map<String, dynamic>.from(found));
-              }
-            },
-            decoration: InputDecoration(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-              ),
+                const SizedBox(width: 6),
+
+                // "Today" chip
+                _buildDateChip(
+                  label: 'Today',
+                  isSelected: isTodaySelected,
+                  icon: Icons.today_rounded,
+                  onTap: () => _onDateFilterChanged(DateTime.now()),
+                ),
+                const SizedBox(width: 6),
+
+                // "Yesterday" chip
+                _buildDateChip(
+                  label: 'Yesterday',
+                  isSelected: isYesterdaySelected,
+                  icon: Icons.history_toggle_off_rounded,
+                  onTap: () => _onDateFilterChanged(yesterday),
+                ),
+                const SizedBox(width: 6),
+
+                // "Custom Calendar Date" button
+                GestureDetector(
+                  onTap: _pickCalendarDate,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: (isDateFilterActive && !isTodaySelected && !isYesterdaySelected)
+                          ? const Color(0xFF1E3A5F)
+                          : const Color(0xFF1E3A5F).withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: (isDateFilterActive && !isTodaySelected && !isYesterdaySelected)
+                            ? const Color(0xFF1E3A5F)
+                            : const Color(0xFF1E3A5F).withOpacity(0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.edit_calendar_rounded,
+                          size: 14,
+                          color: (isDateFilterActive && !isTodaySelected && !isYesterdaySelected)
+                              ? Colors.white
+                              : const Color(0xFF1E3A5F),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          (isDateFilterActive && !isTodaySelected && !isYesterdaySelected)
+                              ? DateFormat('dd MMM yyyy').format(_selectedDate!)
+                              : 'Select Date',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: (isDateFilterActive && !isTodaySelected && !isYesterdaySelected)
+                                ? Colors.white
+                                : const Color(0xFF1E3A5F),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+
+          // Date active banner (when a date is selected)
+          if (isDateFilterActive) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3A5F).withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF1E3A5F).withOpacity(0.15)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.event_available_rounded, size: 16, color: Color(0xFF1E3A5F)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Created on: ${DateFormat('EEEE, dd MMMM yyyy').format(_selectedDate!)} (${filtered.length} leads)',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1E3A5F),
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => _onDateFilterChanged(null),
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.close_rounded, size: 14, color: Colors.black54),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 14),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+
+          // Leads Selector / Dropdown
+          if (_loadingLeads && _leadsList.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1E3A5F)),
+                    ),
+                    SizedBox(width: 10),
+                    Text('Loading leads...', style: TextStyle(fontSize: 13, color: Color(0xFF1E3A5F))),
+                  ],
+                ),
+              ),
+            )
+          else if (filtered.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.orange.withOpacity(0.25)),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.event_busy_rounded, size: 36, color: Colors.orange),
+                  const SizedBox(height: 6),
+                  Text(
+                    isDateFilterActive
+                        ? 'No leads were created on ${DateFormat('dd MMM yyyy').format(_selectedDate!)}'
+                        : 'No leads found in your account',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange.shade900,
+                    ),
+                  ),
+                  if (isDateFilterActive) ...[
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () => _onDateFilterChanged(null),
+                      icon: const Icon(Icons.all_inclusive_rounded, size: 16),
+                      label: const Text('Show All Leads', style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF1E3A5F),
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            )
+          else ...[
+            DropdownButtonFormField<dynamic>(
+              value: filtered.any((l) => l['id'] == currentId) ? currentId : (filtered.isNotEmpty ? filtered.first['id'] : null),
+              hint: Text(
+                isDateFilterActive ? 'Choose lead created on this date...' : 'Choose a lead from the list...',
+                style: const TextStyle(fontSize: 13),
+              ),
+              isExpanded: true,
+              items: filtered.map((l) {
+                final id = l['id'];
+                final name = l['customer_name'] ?? l['first_name'] ?? 'Lead #$id';
+                final phone = l['customer_phone'] ?? l['phone'] ?? l['mobile'] ?? '';
+                final status = (l['status'] ?? 'New').toString();
+                final timeStr = _formatTime(l['created_at']);
+                final dateStr = _formatDateShort(l['created_at']);
+
+                final timeDisplay = isDateFilterActive
+                    ? (timeStr.isNotEmpty ? ' • $timeStr' : '')
+                    : (dateStr.isNotEmpty ? ' • $dateStr $timeStr' : '');
+
+                return DropdownMenuItem<dynamic>(
+                  value: id,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '$name ($phone)$timeDisplay',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF1E3A5F),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(status).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          status.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: _getStatusColor(status),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (selectedId) {
+                if (selectedId == null) return;
+                final found = filtered.firstWhere(
+                  (l) => l['id'] == selectedId,
+                  orElse: () => null,
+                );
+                if (found != null && found is Map) {
+                  _selectLead(Map<String, dynamic>.from(found));
+                }
+              },
+              decoration: InputDecoration(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                labelText: isDateFilterActive
+                    ? 'Leads Created on ${DateFormat('dd MMM').format(_selectedDate!)}'
+                    : 'Select Lead',
+                labelStyle: const TextStyle(fontSize: 12, color: Color(0xFF1E3A5F), fontWeight: FontWeight.w600),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
+                ),
+              ),
+            ),
+
+            // Horizontal Leads Quick Strip for the selected date
+            if (filtered.length > 1) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 52,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) {
+                    final item = filtered[i];
+                    final isSelected = item['id'] == currentId;
+                    final name = item['customer_name'] ?? item['first_name'] ?? 'Lead #${item['id']}';
+                    final timeStr = _formatTime(item['created_at']);
+                    final status = (item['status'] ?? 'new').toString();
+
+                    return GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        _selectLead(Map<String, dynamic>.from(item));
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey.shade300,
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                          boxShadow: isSelected
+                              ? [
+                            BoxShadow(
+                              color: const Color(0xFF1E3A5F).withOpacity(0.25),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                              : null,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  name.length > 15 ? '${name.substring(0, 15)}...' : name,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                    color: isSelected ? Colors.white : const Color(0xFF1E3A5F),
+                                  ),
+                                ),
+                                if (timeStr.isNotEmpty) ...[
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '($timeStr)',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: isSelected ? Colors.white70 : Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              status.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: isSelected ? Colors.orange.shade200 : _getStatusColor(status),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildDateChip({
+    required String label,
+    required bool isSelected,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF1E3A5F) : const Color(0xFF1E3A5F).withOpacity(0.06),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF1E3A5F) : const Color(0xFF1E3A5F).withOpacity(0.15),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: isSelected ? Colors.white : const Color(0xFF1E3A5F),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                color: isSelected ? Colors.white : const Color(0xFF1E3A5F),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -559,43 +1024,51 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
   Widget build(BuildContext context) {
     final lead = _leadData;
     final isPlaceholder = (lead['id'] ?? 0) == 0;
-    final phone = lead['customer_phone'] ?? lead['customer_mobile'] ?? 'N/A';
+    final phone = lead['customer_phone'] ?? lead['customer_mobile'] ?? lead['phone'] ?? 'N/A';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: _buildGlassAppBar(isPlaceholder),
       body: SafeArea(
-        // Keeps content clear of the system navigation bar
         top: false,
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Lead Selector Card (when opened from modules or navigating leads)
-                _buildLeadSelectorCard(),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await _fetchLeadsList();
+            if ((_leadData['id'] ?? 0) > 0) {
+              await _fetchHistory();
+            }
+          },
+          color: const Color(0xFF1E3A5F),
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Date & Lead Selector Card
+                  _buildDateAndLeadSelectorCard(),
 
-                // Lead Info Glass Card
-                _buildGlassLeadCard(lead, isPlaceholder, phone),
-                const SizedBox(height: 16),
+                  // Lead Info Glass Card
+                  _buildGlassLeadCard(lead, isPlaceholder, phone),
+                  const SizedBox(height: 16),
 
-                if (_error != null) ...[
-                  _buildErrorNotice(_error!),
-                  const SizedBox(height: 16),
+                  if (_error != null) ...[
+                    _buildErrorNotice(_error!),
+                    const SizedBox(height: 16),
+                  ],
+
+                  if (!isPlaceholder) ...[
+                    // Log Call Section
+                    _buildGlassLogCallCard(),
+                    const SizedBox(height: 16),
+
+                    // Activity History
+                    _buildGlassHistoryCard(),
+                  ],
                 ],
-  
-                if (!isPlaceholder) ...[
-                  // Log Call Section
-                  _buildGlassLogCallCard(),
-                  const SizedBox(height: 16),
-  
-                  // Activity History
-                  _buildGlassHistoryCard(),
-                ],
-              ],
+              ),
             ),
           ),
         ),
@@ -646,21 +1119,62 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              isPlaceholder ? 'Lead Detail' : _fullName(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  isPlaceholder ? 'Lead Details' : _fullName(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  _selectedDate != null
+                      ? 'Created: ${DateFormat('dd MMM yyyy').format(_selectedDate!)}'
+                      : 'Lead Management & Details',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
         ],
       ),
       actions: [
-        if (!isPlaceholder)
+        // Quick Calendar Picker action
+        Container(
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+              width: 1,
+            ),
+          ),
+          child: IconButton(
+            onPressed: _pickCalendarDate,
+            tooltip: 'Filter by Date',
+            icon: const Icon(
+              Icons.calendar_month_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+            padding: const EdgeInsets.all(10),
+            constraints: const BoxConstraints(),
+          ),
+        ),
+        if (!isPlaceholder) ...[
+          const SizedBox(width: 4),
           Container(
             margin: const EdgeInsets.only(right: 4),
             decoration: BoxDecoration(
@@ -674,7 +1188,8 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
             child: IconButton(
               onPressed: () {
                 HapticFeedback.lightImpact();
-                _makePhoneCall(AutofillHints.telephoneNumber);
+                final phone = _leadData['customer_phone'] ?? _leadData['phone'] ?? '';
+                if (phone.isNotEmpty) _makePhoneCall(phone);
               },
               icon: const Icon(
                 Icons.call_rounded,
@@ -685,6 +1200,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
               constraints: const BoxConstraints(),
             ),
           ),
+        ],
         const SizedBox(width: 4),
       ],
       shape: const RoundedRectangleBorder(
@@ -698,6 +1214,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
 
   // ==================== GLASS LEAD CARD ====================
   Widget _buildGlassLeadCard(Map<String, dynamic> lead, bool isPlaceholder, String phone) {
+    final createdAt = lead['created_at'];
+    final creatorName = _person(lead['creator_first'], lead['creator_last']);
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -715,22 +1234,51 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with Avatar
+          // Creation Date Banner (Prominent badge so users always know when this lead was created)
+          if (createdAt != null && createdAt.toString().isNotEmpty) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3A5F).withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF1E3A5F).withOpacity(0.15)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.access_time_filled_rounded, size: 14, color: Color(0xFF1E3A5F)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Created: ${_formatDateTime(createdAt)}${creatorName != null ? ' by $creatorName' : ''}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1E3A5F),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Header with Avatar & Details
           Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
                     colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)],
                   ),
                   shape: BoxShape.circle,
                 ),
                 child: Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E3A5F),
+                  width: 56,
+                  height: 56,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF1E3A5F),
                     shape: BoxShape.circle,
                   ),
                   child: Center(
@@ -738,14 +1286,14 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
                       _fullName().isNotEmpty ? _fullName()[0].toUpperCase() : 'L',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 24,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -753,7 +1301,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
                     Text(
                       _fullName(),
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF1E3A5F),
                       ),
@@ -775,10 +1323,11 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
                               phone,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: Colors.grey[600],
+                                color: Colors.grey[700],
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
+                            const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
@@ -802,7 +1351,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
               ),
               if (lead['status'] != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     color: _getStatusColor(lead['status']).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
@@ -812,7 +1361,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
                     ),
                   ),
                   child: Text(
-                    lead['status'] ?? 'New',
+                    lead['status']?.toString().toUpperCase() ?? 'NEW',
                     style: TextStyle(
                       color: _getStatusColor(lead['status']),
                       fontSize: 10,
@@ -827,7 +1376,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
           // Info Grid
           _buildInfoGrid(lead),
 
-          // Free-text fields, too long for the two-column grid
+          // Free-text fields
           _buildLongField('Requirement', lead['requirement']),
           _buildLongField('Notes', lead['notes']),
 
@@ -840,7 +1389,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
                   child: _buildGlassActionButton(
                     Icons.call_rounded,
                     'Call Now',
-                        () => _makePhoneCall(phone),
+                    () => _makePhoneCall(phone),
                     Colors.green,
                   ),
                 ),
@@ -849,7 +1398,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
                   child: _buildGlassActionButton(
                     Icons.message_rounded,
                     'WhatsApp',
-                        () => _openWhatsApp(phone),
+                    () => _openWhatsApp(phone),
                     Colors.green.shade700,
                   ),
                 ),
@@ -862,8 +1411,6 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
   }
 
   // ==================== INFO GRID ====================
-  /// Trimmed string for a field, or null when the value is absent/blank so the
-  /// grid can leave it out rather than showing a column of "N/A".
   String? _val(dynamic value) {
     if (value == null) return null;
     final s = value.toString().trim();
@@ -876,8 +1423,6 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
     return name.isEmpty ? null : name;
   }
 
-  /// Shown when the lead could not be loaded — most often because it belongs to
-  /// someone else, since the API scopes leads to creator, telecaller and admin.
   Widget _buildErrorNotice(String message) {
     return Container(
       width: double.infinity,
@@ -902,7 +1447,6 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
     );
   }
 
-  /// Full-width block for free text. Renders nothing when the field is empty.
   Widget _buildLongField(String label, dynamic value) {
     final text = _val(value);
     if (text == null) return const SizedBox.shrink();
@@ -944,9 +1488,11 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
 
   Widget _buildInfoGrid(Map<String, dynamic> lead) {
     final budget = _val(lead['budget']);
+    final createdAt = lead['created_at'];
 
-    // Everything the create form captures, so nothing entered is invisible.
     final candidates = <String, String?>{
+      'Created Date': createdAt != null ? _formatDateShort(createdAt) : null,
+      'Created Time': createdAt != null ? _formatTime(createdAt) : null,
       'Email': _val(lead['email']) ?? _val(lead['customer_email']),
       'Company': _val(lead['company_name']),
       'City': _val(lead['city']),
@@ -958,7 +1504,6 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
       'Created by': _person(lead['creator_first'], lead['creator_last']),
       'Assigned to': _person(lead['assigned_first'], lead['assigned_last']),
       'Follow-up': _val(lead['follow_up_date']),
-      'Created': _val(lead['created_at']),
     };
 
     final items = [
@@ -1145,7 +1690,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
             decoration: InputDecoration(
               labelText: 'Follow-up Date',
               labelStyle: TextStyle(color: Colors.grey[600]),
-              hintText: _followUpDate?.toIso8601String().split('T')[0] ?? 'Tap to select',
+              hintText: _followUpDate != null
+                  ? DateFormat('yyyy-MM-dd').format(_followUpDate!)
+                  : 'Tap to select follow-up date',
               hintStyle: TextStyle(color: Colors.grey[400]),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -1337,7 +1884,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
                 ),
                 title: Text(
                   isCall ? 'Call: $status' : 'Follow-up: $status',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontWeight: FontWeight.w500,
                     fontSize: 13,
                     color: Color(0xFF1E3A5F),
@@ -1386,10 +1933,16 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
         return Colors.orange;
       case 'interested':
         return Colors.green;
+      case 'qualified':
+        return Colors.teal;
+      case 'won':
+        return Colors.purple;
+      case 'lost':
       case 'not interested':
+      case 'not_interested':
         return Colors.red;
       case 'converted':
-        return Colors.purple;
+        return Colors.indigo;
       default:
         return Colors.grey;
     }
