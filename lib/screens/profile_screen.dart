@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/app_update_service.dart';
 import '../services/profile_photo_service.dart';
 import '../utils/constants.dart';
 import '../utils/profile_image.dart';
+import '../widgets/permission_dialog.dart';
 import '../widgets/update_dialog.dart';
 import 'face_enrollment_screen.dart';
 import 'help_screen.dart';
@@ -45,11 +47,12 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notifications = true;
+  bool _notifications = false;
   bool _darkMode = false;
   bool _autoSync = true;
   String _selectedLanguage = 'English';
   final ImagePicker _picker = ImagePicker();
+  bool _loggingOut = false;
 
   String _appVersion = '';
 
@@ -57,11 +60,229 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// registered" to someone who is, just because the check has not returned.
   bool? _faceEnrolled;
 
+  // SharedPreferences keys for app preferences
+  static const String _prefDarkMode = 'pref_dark_mode';
+  static const String _prefAutoSync = 'pref_auto_sync';
+  static const String _prefLanguage = 'pref_language';
+
   @override
   void initState() {
     super.initState();
     _loadAppVersion();
     _loadFaceStatus();
+    _loadPreferences();
+  }
+
+  /// Loads persisted preferences and checks the actual notification permission.
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final notifGranted = await Permission.notification.isGranted;
+
+    if (!mounted) return;
+    setState(() {
+      _notifications = notifGranted;
+      _darkMode = prefs.getBool(_prefDarkMode) ?? false;
+      _autoSync = prefs.getBool(_prefAutoSync) ?? true;
+      _selectedLanguage = prefs.getString(_prefLanguage) ?? 'English';
+    });
+  }
+
+  Future<void> _savePreference(String key, dynamic value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value is bool) {
+      await prefs.setBool(key, value);
+    } else if (value is String) {
+      await prefs.setString(key, value);
+    }
+  }
+
+  /// Handles the notification toggle with a proper explanation dialog.
+  Future<void> _handleNotificationToggle(bool wantEnabled) async {
+    if (wantEnabled) {
+      final granted = await requestPermissionWithExplanation(
+        context,
+        permission: Permission.notification,
+        title: 'Stay Updated',
+        message: 'Allow notifications to receive important attendance updates, '
+            'reminders, announcements, and other important information from the app.',
+        icon: Icons.notifications_active_rounded,
+        primaryButtonText: 'Allow Notifications',
+      );
+      if (!mounted) return;
+      setState(() => _notifications = granted);
+    } else {
+      // Notifications can only be revoked from system settings.
+      final opened = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.notifications_off_rounded,
+                      color: Colors.orange[700], size: 36),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Disable Notifications',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E3A5F),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'To disable notifications, please go to your device settings '
+                  'and turn off notifications for this app.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.4),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          side: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        child: Text('Cancel',
+                            style: TextStyle(
+                                color: Colors.grey[600], fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          await openAppSettings();
+                          if (ctx.mounted) Navigator.pop(ctx, true);
+                        },
+                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                        label: const Text('Open Settings'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E3A5F),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      // Refresh the actual status after returning from settings.
+      if (opened == true) {
+        final nowGranted = await Permission.notification.isGranted;
+        if (mounted) setState(() => _notifications = nowGranted);
+      }
+    }
+  }
+
+  /// Logout with confirmation dialog, using existing SessionManager.
+  Future<void> _logout() async {
+    if (_loggingOut) return;
+
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        elevation: 0,
+        backgroundColor: Colors.grey[50],
+        title: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.logout_rounded, color: Colors.red, size: 32),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Logout',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: Color(0xFF1E3A5F),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to logout from this device?',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(color: Colors.grey[300]!),
+              ),
+            ),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
+        actionsAlignment: MainAxisAlignment.center,
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      ),
+    );
+
+    if (shouldLogout != true || !mounted) return;
+
+    setState(() => _loggingOut = true);
+
+    try {
+      await ApiService().logout();
+    } catch (_) {
+      // Logout must succeed locally even if the server call fails.
+    }
+
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
   }
 
   Future<void> _loadFaceStatus() async {
@@ -436,9 +657,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSwitchTile(
                     icon: Icons.notifications_rounded,
                     title: 'Notifications',
-                    subtitle: 'Receive push notifications',
+                    subtitle: _notifications
+                        ? 'Push notifications are enabled'
+                        : 'Push notifications are disabled',
                     value: _notifications,
-                    onChanged: (val) => setState(() => _notifications = val),
+                    onChanged: _handleNotificationToggle,
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildSwitchTile(
@@ -446,15 +669,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: 'Dark Mode',
                     subtitle: 'Enable dark theme',
                     value: _darkMode,
-                    onChanged: (val) => setState(() => _darkMode = val),
+                    onChanged: (val) {
+                      setState(() => _darkMode = val);
+                      _savePreference(_prefDarkMode, val);
+                      _showSnack('Dark mode will be available in a future update');
+                    },
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildSwitchTile(
                     icon: Icons.sync_rounded,
                     title: 'Auto Sync',
-                    subtitle: 'Automatically sync data',
+                    subtitle: _autoSync
+                        ? 'Data syncs automatically'
+                        : 'Manual sync only',
                     value: _autoSync,
-                    onChanged: (val) => setState(() => _autoSync = val),
+                    onChanged: (val) {
+                      setState(() => _autoSync = val);
+                      _savePreference(_prefAutoSync, val);
+                    },
                   ),
                   const Divider(height: 1, indent: 16),
                   _buildDropdownTile(
@@ -462,7 +694,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: 'Language',
                     subtitle: _selectedLanguage,
                     items: ['English', 'Hindi', 'Marathi', 'Gujarati'],
-                    onChanged: (val) => setState(() => _selectedLanguage = val!),
+                    onChanged: (val) {
+                      setState(() => _selectedLanguage = val!);
+                      _savePreference(_prefLanguage, val!);
+                      _showSnack('Language support coming soon');
+                    },
                   ),
                 ],
               ),
@@ -504,6 +740,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Logout Section
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withValues(alpha: 0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.logout_rounded, color: Colors.red, size: 20),
+                ),
+                title: const Text(
+                  'Logout',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.red,
+                  ),
+                ),
+                subtitle: Text(
+                  'Sign out from your account',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+                trailing: _loggingOut
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
+                      )
+                    : const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
+                onTap: _loggingOut ? null : _logout,
               ),
             ),
             const SizedBox(height: 24),
@@ -777,19 +1059,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// which is what stops the token still working elsewhere — then clears the
   /// token locally even if that call failed, because an expired or offline
   /// session must still log out on the device.
-  Future<void> _logout() async {
-    await ApiService().logout();
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
-  }
-
   String? _profileImagePath;
   late Map<String, dynamic> _userData;
   final ImagePicker _picker = ImagePicker();
+  bool _loggingOut = false;
 
   @override
   void initState() {
@@ -797,6 +1070,91 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _userData = widget.userData ?? {};
     _profileImagePath = widget.profileImagePath;
     _loadProfileImage();
+  }
+
+  /// Logout with confirmation dialog, using existing SessionManager and ApiService.
+  Future<void> _logout() async {
+    if (_loggingOut) return;
+
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        elevation: 0,
+        backgroundColor: Colors.grey[50],
+        title: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.logout_rounded, color: Colors.red, size: 32),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Logout',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: Color(0xFF1E3A5F),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to logout from this device?',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(color: Colors.grey[300]!),
+              ),
+            ),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
+        actionsAlignment: MainAxisAlignment.center,
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      ),
+    );
+
+    if (shouldLogout != true || !mounted) return;
+
+    setState(() => _loggingOut = true);
+
+    try {
+      await ApiService().logout();
+    } catch (_) {
+      // Logout must succeed locally even if the server call fails.
+    }
+
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
   }
 
   Future<void> _refreshProfile() async {
@@ -1238,7 +1596,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.08),
+                        color: Colors.grey.withValues(alpha: 0.08),
                         spreadRadius: 1,
                         blurRadius: 12,
                         offset: const Offset(0, 3),
@@ -1249,7 +1607,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     leading: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.1),
+                        color: Colors.red.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
@@ -1273,44 +1631,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: Colors.grey[600],
                       ),
                     ),
-                    trailing: const Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      size: 16,
-                      color: Colors.grey,
-                    ),
-                    onTap: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
+                    trailing: _loggingOut
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
+                          )
+                        : const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 16,
+                            color: Colors.grey,
                           ),
-                          title: const Text('Logout'),
-                          content: const Text('Are you sure you want to logout?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cancel'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                // This used to show "Logging out..." and stop
-                                // there — the TODO was never finished, so the
-                                // button confirmed a logout that never happened
-                                // and the session stayed open.
-                                _logout();
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                                foregroundColor: Colors.white,
-                              ),
-                              child: const Text('Logout'),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                    // _logout() does the confirming, so this only needs the
+                    // guard against a second tap while one is in flight —
+                    // same as the settings screen.
+                    onTap: _loggingOut ? null : _logout,
                   ),
                 ),
   
