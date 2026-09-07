@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import 'lead_detail_screen.dart';
+import 'create_lead_screen.dart';
 
 class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
@@ -513,21 +514,36 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     _priority = 'Medium';
   }
 
+  Future<void> _openCreateLead({Map<String, dynamic>? leadToEdit}) async {
+    HapticFeedback.mediumImpact();
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateLeadScreen(lead: leadToEdit),
+      ),
+    );
+
+    if (result is Map && result['success'] == true && mounted) {
+      final isNew = result['isNew'] == true;
+      _fetch();
+      _showMsg(result['message'] ?? (isNew ? '✅ Lead created successfully' : '✅ Lead updated successfully'));
+
+      final newId = int.tryParse('${result['id'] ?? 0}') ?? 0;
+      if (isNew && newId > 0 && result['data'] is Map) {
+        _openLead({
+          'id': newId,
+          ...result['data'],
+          'customer_phone': result['data']['phone'],
+          'status': 'new',
+        });
+      }
+    } else if (result == true && mounted) {
+      _fetch();
+    }
+  }
+
   void _editLead(Map<String, dynamic> l) async {
-    _editId = l['id'];
-    _nameCtrl.text = l['customer_name'] ?? '';
-    _phoneCtrl.text = l['phone'] ?? l['customer_phone'] ?? '';
-    _emailCtrl.text = l['email'] ?? l['customer_email'] ?? '';
-    _companyCtrl.text = l['company_name'] ?? '';
-    _cityCtrl.text = l['city'] ?? '';
-    _campaignCtrl.text = l['campaign_name'] ?? '';
-    _requirementCtrl.text = l['requirement'] ?? '';
-    _budgetCtrl.text = l['budget']?.toString() ?? '';
-    _notesCtrl.text = l['notes'] ?? '';
-    _source = l['source'] ?? l['lead_source'] ?? 'Website';
-    _priority = l['priority'] ?? 'Medium';
-    _selectedTelecaller = l['assigned_to'];
-    _showForm();
+    _openCreateLead(leadToEdit: l);
   }
 
   Future<void> _submit() async {
@@ -1409,11 +1425,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
   // ==================== FLOATING ACTION BUTTON ====================
   Widget _buildFAB() {
     return FloatingActionButton(
-      onPressed: () {
-        HapticFeedback.mediumImpact();
-        _resetForm();
-        _showForm();
-      },
+      onPressed: () => _openCreateLead(),
       backgroundColor: const Color(0xFF1E3A5F),
       foregroundColor: Colors.white,
       elevation: 4,

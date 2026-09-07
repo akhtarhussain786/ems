@@ -284,9 +284,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       if (mounted) {
         setState(() {
           _userData = data;
-          final roleName = data['role_name'] ?? data['role'] ?? '';
-          final deptName = data['department_name'] ?? '';
-          _features = DeptNavHelper.getFeaturesForRole(roleName, deptName);
+          _features = DeptNavHelper.getFeaturesForUser(data);
         });
       }
     }

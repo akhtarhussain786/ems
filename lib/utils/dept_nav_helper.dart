@@ -49,17 +49,86 @@ class DeptNavHelper {
     }
   }
 
-  static List<DeptFeature> getFeaturesForRole(String? roleName, String? deptName) {
+  static List<DeptFeature> getFeaturesForUser(Map<String, dynamic>? userData) {
+    if (userData == null) return [];
+    final roleName = (userData['role_name'] ?? userData['role'] ?? '').toString();
+    final deptName = (userData['department_name'] ?? '').toString();
+    final permsRaw = userData['permissions'];
+    Map<String, dynamic>? permissions;
+    if (permsRaw is Map<String, dynamic>) {
+      permissions = permsRaw;
+    } else if (permsRaw is Map) {
+      permissions = Map<String, dynamic>.from(permsRaw);
+    }
+    return getFeaturesForRole(roleName, deptName, permissions);
+  }
+
+  static List<DeptFeature> getFeaturesForRole(String? roleName, String? deptName, [Map<String, dynamic>? permissions]) {
     final role = roleName?.toString().toLowerCase() ?? '';
-    final dept = deptName?.toString().toLowerCase() ?? '';
 
     // Super Admin - All features (except dashboard, attendance, history, profile)
-    if (role.contains('super_admin') || role.contains('admin')) {
+    if (role.contains('super_admin') || role == 'admin') {
       return DeptFeature.values.toList();
     }
 
+    // Dynamic Permission Evaluation ("Jo Roles me Tick karein wo App me dikhe")
+    if (permissions != null && permissions.isNotEmpty) {
+      bool hasView(String module) {
+        final perm = permissions[module];
+        if (perm == null) return false;
+        if (perm is Map) {
+          return perm['can_view'] == true || perm['can_view'] == 1 || perm['can_view'] == '1';
+        }
+        return false;
+      }
+
+      final Set<DeptFeature> dynamicFeatures = {};
+
+      if (hasView('leaves') || hasView('leave_requests')) dynamicFeatures.add(DeptFeature.leaveManagement);
+      if (hasView('marketing')) dynamicFeatures.add(DeptFeature.marketing);
+      if (hasView('leads')) {
+        dynamicFeatures.add(DeptFeature.leads);
+        dynamicFeatures.add(DeptFeature.leadDetail);
+      }
+      if (hasView('campaigns')) dynamicFeatures.add(DeptFeature.campaigns);
+      if (hasView('call_reports')) dynamicFeatures.add(DeptFeature.callReports);
+      if (hasView('follow_ups')) dynamicFeatures.add(DeptFeature.followUps);
+      if (hasView('telecaller')) dynamicFeatures.add(DeptFeature.telecaller);
+      if (hasView('sales')) dynamicFeatures.add(DeptFeature.salesPipeline);
+      if (hasView('daily_work_reports') || hasView('work_reports')) dynamicFeatures.add(DeptFeature.dailyWorkReport);
+      if (hasView('tasks')) dynamicFeatures.add(DeptFeature.tasks);
+      if (hasView('hr_activities')) dynamicFeatures.add(DeptFeature.hrActivities);
+      if (hasView('payroll') || hasView('salary') || hasView('reports')) dynamicFeatures.add(DeptFeature.salaryReport);
+      if (hasView('travel')) dynamicFeatures.add(DeptFeature.travel);
+      if (hasView('expenses')) dynamicFeatures.add(DeptFeature.expenses);
+      if (hasView('documents')) dynamicFeatures.add(DeptFeature.documents);
+      if (hasView('notices')) dynamicFeatures.add(DeptFeature.notices);
+      if (hasView('meetings')) dynamicFeatures.add(DeptFeature.meetings);
+      if (hasView('chat')) dynamicFeatures.add(DeptFeature.chat);
+      if (hasView('help')) dynamicFeatures.add(DeptFeature.help);
+      if (hasView('it_team')) dynamicFeatures.add(DeptFeature.itTeam);
+      if (hasView('downloads')) dynamicFeatures.add(DeptFeature.downloads);
+      if (hasView('notifications')) dynamicFeatures.add(DeptFeature.notifications);
+
+      if (dynamicFeatures.isNotEmpty) {
+        return dynamicFeatures.toList();
+      }
+    }
+
+    // Role-based fallbacks (if permissions map not available or offline cache)
+    if (role.contains('hr') || role.contains('hr_admin') || role.contains('hr_executive')) {
+      return [
+        DeptFeature.leaveManagement,
+        DeptFeature.leads, DeptFeature.leadDetail, DeptFeature.marketing,
+        DeptFeature.campaigns, DeptFeature.callReports, DeptFeature.followUps,
+        DeptFeature.dailyWorkReport, DeptFeature.hrActivities, DeptFeature.documents,
+        DeptFeature.notices, DeptFeature.notifications, DeptFeature.salaryReport,
+        DeptFeature.downloads,
+      ];
+    }
+
     // Digital Marketing
-    if (role.contains('digital_marketing') || role == 'digital_marketing_admin') {
+    if (role.contains('digital_marketing') || role.contains('marketing')) {
       return [
         DeptFeature.leaveManagement,
         DeptFeature.leads, DeptFeature.campaigns, DeptFeature.marketing,
@@ -84,16 +153,6 @@ class DeptNavHelper {
         DeptFeature.salesPipeline, DeptFeature.followUps, DeptFeature.marketing,
         DeptFeature.travel, DeptFeature.expenses, DeptFeature.dailyWorkReport,
         DeptFeature.leads, DeptFeature.leadDetail, DeptFeature.downloads,
-      ];
-    }
-
-    // HR
-    if (role.contains('hr') || role == 'hr_admin') {
-      return [
-        DeptFeature.leaveManagement,
-        DeptFeature.hrActivities, DeptFeature.dailyWorkReport, DeptFeature.documents,
-        DeptFeature.notices, DeptFeature.notifications,
-        DeptFeature.salaryReport, DeptFeature.downloads,
       ];
     }
 
@@ -280,13 +339,6 @@ class DeptNavHelper {
           return const LeadDetailScreen();
         case DeptFeature.salaryReport:
           return const SalaryReportScreen();
-
-        default:
-          return _buildPlaceholderScreen(
-            getFeatureLabel(feature),
-            getFeatureIcon(feature),
-            'This feature is coming soon!',
-          );
       }
     } catch (e) {
       return _buildPlaceholderScreen(

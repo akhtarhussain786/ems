@@ -34,6 +34,7 @@ class _DownloadScreenState extends State<DownloadScreen> with TickerProviderStat
   bool _exportingPdf = false;
   List<dynamic> _reportHeaders = [];
   List<dynamic> _reportRows = [];
+  List<dynamic> _reportGroups = [];
   int _totalCount = 0;
   String? _lastSavedFilePath;
   String? _lastSavedFileType; // 'excel' or 'pdf'
@@ -151,6 +152,7 @@ class _DownloadScreenState extends State<DownloadScreen> with TickerProviderStat
         setState(() {
           _reportHeaders = res['headers'] ?? [];
           _reportRows = res['rows'] ?? [];
+          _reportGroups = res['groups'] ?? [];
           _totalCount = res['total_count'] ?? _reportRows.length;
         });
       } else {
@@ -158,6 +160,7 @@ class _DownloadScreenState extends State<DownloadScreen> with TickerProviderStat
           setState(() {
             _reportHeaders = [];
             _reportRows = [];
+            _reportGroups = [];
             _totalCount = 0;
           });
         }
@@ -298,125 +301,291 @@ class _DownloadScreenState extends State<DownloadScreen> with TickerProviderStat
         return <String>[];
       }).toList();
 
-      doc.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4.landscape,
-          margin: const pw.EdgeInsets.all(20),
-          header: (pw.Context context) {
-            return pw.Container(
-              margin: const pw.EdgeInsets.only(bottom: 10),
-              padding: const pw.EdgeInsets.only(bottom: 8),
-              decoration: const pw.BoxDecoration(
-                border: pw.Border(
-                  bottom: pw.BorderSide(color: PdfColor.fromInt(0xFF1E3A5F), width: 1.5),
-                ),
-              ),
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+      if (_selectedReportType == 'leads' && _reportGroups.isNotEmpty) {
+        // ==================== SEPARATE PAGE PER CREATOR (NO SUMMARY PAGE) ====================
+        for (final group in _reportGroups) {
+          final creatorName = (group['creator_name'] ?? 'Direct / Unassigned').toString();
+          final creatorCode = (group['employee_code'] ?? '').toString();
+          final groupHeaders = (group['headers'] as List?)?.map((h) => h.toString()).toList() ?? [
+            'ID', 'Customer Name', 'Phone', 'City', 'Source', 'Requirement', 'Priority', 'Status', 'Assigned Staff', 'Created Date'
+          ];
+          final groupRows = (group['rows'] as List?)?.map((r) {
+            if (r is List) {
+              return r.map((c) => c?.toString() ?? '').toList();
+            }
+            return <String>[];
+          }).toList() ?? [];
+
+          doc.addPage(
+            pw.MultiPage(
+              pageFormat: PdfPageFormat.a4.landscape,
+              margin: const pw.EdgeInsets.all(18),
+              header: (pw.Context context) {
+                return pw.Container(
+                  margin: const pw.EdgeInsets.only(bottom: 8),
+                  padding: const pw.EdgeInsets.only(bottom: 6),
+                  decoration: const pw.BoxDecoration(
+                    border: pw.Border(
+                      bottom: pw.BorderSide(color: PdfColor.fromInt(0xFF1E3A5F), width: 1.5),
+                    ),
+                  ),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
                     children: [
-                      pw.Text(
-                        'YATHARTH INSTITUTION & EMS',
-                        style: pw.TextStyle(
-                          color: const PdfColor.fromInt(0xFF1E3A5F),
-                          fontSize: 14,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            'YATHARTH INSTITUTION & EMS',
+                            style: pw.TextStyle(
+                              color: const PdfColor.fromInt(0xFF1E3A5F),
+                              fontSize: 13,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                          pw.SizedBox(height: 2),
+                          pw.Row(
+                            children: [
+                              pw.Text(
+                                'Leads Created By: ',
+                                style: pw.TextStyle(
+                                  color: PdfColors.grey800,
+                                  fontSize: 9.5,
+                                  fontWeight: pw.FontWeight.bold,
+                                ),
+                              ),
+                              pw.Text(
+                                '$creatorName ${creatorCode.isNotEmpty ? "($creatorCode)" : ""}',
+                                style: pw.TextStyle(
+                                  color: const PdfColor.fromInt(0xFF1E88E5),
+                                  fontSize: 9.5,
+                                  fontWeight: pw.FontWeight.bold,
+                                ),
+                              ),
+                              pw.Text(
+                                '   •   Date Range: $startStr – $endStr',
+                                style: const pw.TextStyle(
+                                  color: PdfColors.grey700,
+                                  fontSize: 8.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        '${activeReport['title']} • Date Range: $startStr - $endStr',
-                        style: const pw.TextStyle(
-                          color: PdfColors.grey700,
-                          fontSize: 9,
-                        ),
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        children: [
+                          pw.Container(
+                            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: pw.BoxDecoration(
+                              color: const PdfColor.fromInt(0xFFE8F0FE),
+                              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+                              border: pw.Border.all(color: const PdfColor.fromInt(0xFF1E88E5), width: 0.7),
+                            ),
+                            child: pw.Text(
+                              'Creator Leads: ${groupRows.length}',
+                              style: pw.TextStyle(
+                                color: const PdfColor.fromInt(0xFF1565C0),
+                                fontSize: 9,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          pw.SizedBox(height: 2),
+                          pw.Text(
+                            'Generated: $genDateStr',
+                            style: const pw.TextStyle(
+                              color: PdfColors.grey600,
+                              fontSize: 7.5,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                );
+              },
+              footer: (pw.Context context) {
+                return pw.Container(
+                  margin: const pw.EdgeInsets.only(top: 6),
+                  padding: const pw.EdgeInsets.only(top: 4),
+                  decoration: const pw.BoxDecoration(
+                    border: pw.Border(
+                      top: pw.BorderSide(color: PdfColors.grey300, width: 0.6),
+                    ),
+                  ),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text(
-                        'Total Records: ${_reportRows.length}',
-                        style: pw.TextStyle(
-                          color: const PdfColor.fromInt(0xFF1E3A5F),
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
+                        'Confidential • Generated by Yatharth EMS Mobile App',
+                        style: const pw.TextStyle(color: PdfColors.grey600, fontSize: 7.5),
                       ),
-                      pw.SizedBox(height: 2),
                       pw.Text(
-                        'Generated: $genDateStr',
-                        style: const pw.TextStyle(
-                          color: PdfColors.grey600,
-                          fontSize: 8,
-                        ),
+                        'Page ${context.pageNumber} of ${context.pagesCount}',
+                        style: const pw.TextStyle(color: PdfColors.grey600, fontSize: 7.5),
                       ),
                     ],
                   ),
-                ],
-              ),
-            );
-          },
-          footer: (pw.Context context) {
-            return pw.Container(
-              margin: const pw.EdgeInsets.only(top: 8),
-              padding: const pw.EdgeInsets.only(top: 6),
-              decoration: const pw.BoxDecoration(
-                border: pw.Border(
-                  top: pw.BorderSide(color: PdfColors.grey300, width: 0.8),
-                ),
-              ),
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    'Confidential • Generated by Yatharth EMS Mobile App',
-                    style: const pw.TextStyle(color: PdfColors.grey600, fontSize: 8),
+                );
+              },
+              build: (pw.Context context) {
+                return [
+                  pw.TableHelper.fromTextArray(
+                    headers: groupHeaders,
+                    data: groupRows,
+                    border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                    headerStyle: pw.TextStyle(
+                      color: PdfColors.white,
+                      fontSize: 8,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                    headerDecoration: const pw.BoxDecoration(
+                      color: PdfColor.fromInt(0xFF1E3A5F),
+                    ),
+                    cellStyle: const pw.TextStyle(
+                      color: PdfColors.black,
+                      fontSize: 7.5,
+                    ),
+                    cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3.5),
+                    rowDecoration: const pw.BoxDecoration(
+                      color: PdfColors.white,
+                    ),
+                    oddRowDecoration: const pw.BoxDecoration(
+                      color: PdfColor.fromInt(0xFFF7F9FC),
+                    ),
+                    cellAlignment: pw.Alignment.centerLeft,
+                    headerAlignment: pw.Alignment.centerLeft,
                   ),
-                  pw.Text(
-                    'Page ${context.pageNumber} of ${context.pagesCount}',
-                    style: const pw.TextStyle(color: PdfColors.grey600, fontSize: 8),
+                ];
+              },
+            ),
+          );
+        }
+      } else {
+        // ==================== STANDARD SINGLE MULTI-PAGE REPORT ====================
+        doc.addPage(
+          pw.MultiPage(
+            pageFormat: PdfPageFormat.a4.landscape,
+            margin: const pw.EdgeInsets.all(20),
+            header: (pw.Context context) {
+              return pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 10),
+                padding: const pw.EdgeInsets.only(bottom: 8),
+                decoration: const pw.BoxDecoration(
+                  border: pw.Border(
+                    bottom: pw.BorderSide(color: PdfColor.fromInt(0xFF1E3A5F), width: 1.5),
                   ),
-                ],
-              ),
-            );
-          },
-          build: (pw.Context context) {
-            return [
-              pw.TableHelper.fromTextArray(
-                headers: headersList,
-                data: rowsList,
-                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-                headerStyle: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 8,
-                  fontWeight: pw.FontWeight.bold,
                 ),
-                headerDecoration: const pw.BoxDecoration(
-                  color: PdfColor.fromInt(0xFF1E3A5F),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'YATHARTH INSTITUTION & EMS',
+                          style: pw.TextStyle(
+                            color: const PdfColor.fromInt(0xFF1E3A5F),
+                            fontSize: 14,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                        pw.SizedBox(height: 2),
+                        pw.Text(
+                          '${activeReport['title']} • Date Range: $startStr - $endStr',
+                          style: const pw.TextStyle(
+                            color: PdfColors.grey700,
+                            fontSize: 9,
+                          ),
+                        ),
+                      ],
+                    ),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text(
+                          'Total Records: ${_reportRows.length}',
+                          style: pw.TextStyle(
+                            color: const PdfColor.fromInt(0xFF1E3A5F),
+                            fontSize: 10,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                        pw.SizedBox(height: 2),
+                        pw.Text(
+                          'Generated: $genDateStr',
+                          style: const pw.TextStyle(
+                            color: PdfColors.grey600,
+                            fontSize: 8,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                cellStyle: const pw.TextStyle(
-                  color: PdfColors.black,
-                  fontSize: 7,
+              );
+            },
+            footer: (pw.Context context) {
+              return pw.Container(
+                margin: const pw.EdgeInsets.only(top: 8),
+                padding: const pw.EdgeInsets.only(top: 6),
+                decoration: const pw.BoxDecoration(
+                  border: pw.Border(
+                    top: pw.BorderSide(color: PdfColors.grey300, width: 0.8),
+                  ),
                 ),
-                cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-                rowDecoration: const pw.BoxDecoration(
-                  color: PdfColors.white,
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Confidential • Generated by Yatharth EMS Mobile App',
+                      style: const pw.TextStyle(color: PdfColors.grey600, fontSize: 8),
+                    ),
+                    pw.Text(
+                      'Page ${context.pageNumber} of ${context.pagesCount}',
+                      style: const pw.TextStyle(color: PdfColors.grey600, fontSize: 8),
+                    ),
+                  ],
                 ),
-                oddRowDecoration: const pw.BoxDecoration(
-                  color: PdfColor.fromInt(0xFFF7F9FC),
+              );
+            },
+            build: (pw.Context context) {
+              return [
+                pw.TableHelper.fromTextArray(
+                  headers: headersList,
+                  data: rowsList,
+                  border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                  headerStyle: pw.TextStyle(
+                    color: PdfColors.white,
+                    fontSize: 8,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                  headerDecoration: const pw.BoxDecoration(
+                    color: PdfColor.fromInt(0xFF1E3A5F),
+                  ),
+                  cellStyle: const pw.TextStyle(
+                    color: PdfColors.black,
+                    fontSize: 7,
+                  ),
+                  cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                  rowDecoration: const pw.BoxDecoration(
+                    color: PdfColors.white,
+                  ),
+                  oddRowDecoration: const pw.BoxDecoration(
+                    color: PdfColor.fromInt(0xFFF7F9FC),
+                  ),
+                  cellAlignment: pw.Alignment.centerLeft,
+                  headerAlignment: pw.Alignment.centerLeft,
                 ),
-                cellAlignment: pw.Alignment.centerLeft,
-                headerAlignment: pw.Alignment.centerLeft,
-              ),
-            ];
-          },
-        ),
-      );
+              ];
+            },
+          ),
+        );
+      }
 
       final pdfBytes = await doc.save();
       final dir = await getApplicationDocumentsDirectory();

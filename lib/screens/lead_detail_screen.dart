@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import 'create_lead_screen.dart';
 
 class LeadDetailScreen extends StatefulWidget {
   final Map<String, dynamic>? lead;
@@ -1174,6 +1175,43 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
           ),
         ),
         if (!isPlaceholder) ...[
+          const SizedBox(width: 4),
+          Container(
+            margin: const EdgeInsets.only(right: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.1),
+                width: 1,
+              ),
+            ),
+            child: IconButton(
+              onPressed: () async {
+                HapticFeedback.lightImpact();
+                final res = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CreateLeadScreen(lead: _leadData),
+                  ),
+                );
+                if (res != null && mounted) {
+                  await _fetchLeadsList();
+                  if ((_leadData['id'] ?? 0) > 0) {
+                    await _fetchHistory();
+                  }
+                }
+              },
+              tooltip: 'Edit Lead',
+              icon: const Icon(
+                Icons.edit_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+              padding: const EdgeInsets.all(10),
+              constraints: const BoxConstraints(),
+            ),
+          ),
           const SizedBox(width: 4),
           Container(
             margin: const EdgeInsets.only(right: 4),
