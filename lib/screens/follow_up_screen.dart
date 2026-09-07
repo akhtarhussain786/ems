@@ -55,7 +55,7 @@ class _FollowUpScreenState extends State<FollowUpScreen> with SingleTickerProvid
       if (mounted && res['success'] == true) {
         setState(() => _followUps = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('follow_up_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

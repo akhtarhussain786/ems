@@ -52,7 +52,7 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
           _stats = (res['data'] is Map ? (res['data']!['stats'] ?? {}) : {});
         });
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('telecaller_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 
