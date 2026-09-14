@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../firebase_options.dart';
 import 'api_service.dart';
@@ -107,6 +108,8 @@ class FCMService {
                 _channel.name,
                 channelDescription: _channel.description,
                 icon: android?.smallIcon ?? '@drawable/ic_stat_notification',
+                largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
+                color: const Color(0xFFFFFFFF),
                 importance: Importance.max,
                 priority: Priority.high,
                 ticker: 'ticker',

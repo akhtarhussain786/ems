@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import '../utils/helpers.dart';
 
 class ExpenseScreen extends StatefulWidget {
   const ExpenseScreen({super.key});
@@ -57,7 +58,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> with SingleTickerProvider
       if (mounted && res['success'] == true) {
         setState(() => _expenses = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('expense_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -512,7 +513,8 @@ class _ExpenseScreenState extends State<ExpenseScreen> with SingleTickerProvider
     final statusLabel = _statusLabel(status);
     final statusColor = _statusColor(status);
     final statusIcon = _statusIcon(status);
-    final amount = e['amount'] ?? 0;
+    // Arrives from MySQL as the string "10000.00", not a number.
+    final amount = Helpers.asDouble(e['amount']);
     final isApproved = status == 'approved';
     final isRejected = status == 'rejected';
 

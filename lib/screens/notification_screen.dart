@@ -48,7 +48,7 @@ class _NotificationScreenState extends State<NotificationScreen> with SingleTick
         _updateUnreadCount();
         _animationController.forward(from: 0);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('notification_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -74,7 +74,7 @@ class _NotificationScreenState extends State<NotificationScreen> with SingleTick
         });
         _fetch();
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('notification_screen: $e'); }
   }
 
   Future<void> _markAllRead() async {
@@ -100,11 +100,12 @@ class _NotificationScreenState extends State<NotificationScreen> with SingleTick
           ),
         );
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('notification_screen: $e'); }
   }
 
   IconData _icon(String type) {
     switch (type) {
+      case 'follow_up': return Icons.alarm_on_rounded;
       case 'leave': return Icons.event_rounded;
       case 'task': return Icons.assignment_rounded;
       case 'lead': return Icons.person_add_rounded;
@@ -117,6 +118,7 @@ class _NotificationScreenState extends State<NotificationScreen> with SingleTick
 
   Color _iconColor(String type) {
     switch (type) {
+      case 'follow_up': return Colors.deepPurple;
       case 'leave': return Colors.purple;
       case 'task': return Colors.blue;
       case 'lead': return Colors.green;

@@ -47,7 +47,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
       if (mounted && res['success'] == true) setState(() => _leaves = res['data'] ?? []);
       final bal = await ApiService().get('leaves/balance');
       if (mounted && bal['success'] == true) setState(() => _balances = bal['data'] ?? []);
-    } catch (_) {}
+    } catch (e) { debugPrint('leave_management_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

@@ -48,7 +48,7 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
           _pipeline = _stages.map((s) => {'stage': s, 'leads': (raw[s] as List?) ?? <dynamic>[]}).toList();
         });
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('sales_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

@@ -45,7 +45,7 @@ class _TasksScreenState extends State<TasksScreen> with SingleTickerProviderStat
       if (mounted && res['success'] == true) {
         setState(() => _tasks = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('tasks_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

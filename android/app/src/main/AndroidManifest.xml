@@ -18,6 +18,11 @@
     <!-- Android 13+ Notification Permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
+    <!-- In-app APK updates (the app is distributed outside the Play Store).
+         Android 8+ requires per-app consent before this app may hand an APK to
+         the system installer; the user still confirms in Android's own dialog. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+
     <application
         android:label="Yatharth Connect"
         android:name="${applicationName}"
@@ -65,6 +70,11 @@
 
     <!-- IMPORTANT: Add all queries for Android 11+ -->
     <queries>
+        <!-- So the package installer is visible to us on Android 11+ -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="application/vnd.android.package-archive"/>
+        </intent>
         <!-- For Phone Dialer - Direct Call -->
         <intent>
             <action android:name="android.intent.action.CALL"/>

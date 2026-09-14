@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import 'lead_detail_screen.dart';
+import 'create_lead_screen.dart';
 
 class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
@@ -14,7 +17,10 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
   List<dynamic> _leads = [];
   bool _loading = true;
   final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
   String _statusFilter = '';
+  DateTimeRange? _selectedDateRange;
+  String _datePreset = 'all'; // 'all', 'today', 'yesterday', 'this_week', 'this_month', 'last_month', 'custom'
   final _formKey = GlobalKey<FormState>();
   bool _submitting = false;
   final _nameCtrl = TextEditingController();
@@ -52,6 +58,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _animationController.dispose();
     _searchCtrl.dispose();
     _nameCtrl.dispose();
@@ -69,10 +76,432 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
   Future<void> _fetch() async {
     setState(() => _loading = true);
     try {
-      final res = await ApiService().post('leads/list', {'status': _statusFilter});
+      final reqData = <String, dynamic>{
+        if (_searchCtrl.text.trim().isNotEmpty) 'search': _searchCtrl.text.trim(),
+        if (_statusFilter.isNotEmpty) 'status': _statusFilter,
+        if (_selectedDateRange != null) ...{
+          'from_date': DateFormat('yyyy-MM-dd').format(_selectedDateRange!.start),
+          'to_date': DateFormat('yyyy-MM-dd').format(_selectedDateRange!.end),
+        }
+      };
+      final res = await ApiService().post('leads/list', reqData);
       if (mounted && res['success'] == true) setState(() => _leads = res['data'] ?? []);
-    } catch (_) {}
+    } catch (e) { debugPrint('leads_screen: $e'); }
     if (mounted) setState(() => _loading = false);
+  }
+
+  void _search(String query) {
+    setState(() {});
+    _searchDebounce?.cancel();
+    if (query.trim().isEmpty) {
+      _fetch();
+    } else {
+      _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+        if (mounted) _fetch();
+      });
+    }
+  }
+
+  Future<void> _pickDateRange() async {
+    HapticFeedback.selectionClick();
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: _selectedDateRange ?? DateTimeRange(
+        start: DateTime(now.year, now.month, 1),
+        end: now,
+      ),
+      helpText: 'FILTER LEADS BY CREATION DATE RANGE',
+      confirmText: 'APPLY DATE RANGE',
+      saveText: 'SELECT',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF1E3A5F),
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Color(0xFF1E3A5F),
+            ),
+            dialogTheme: DialogThemeData(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _datePreset = 'custom';
+        _selectedDateRange = picked;
+      });
+      _fetch();
+    }
+  }
+
+  void _setDatePreset(String preset) {
+    HapticFeedback.selectionClick();
+    final now = DateTime.now();
+    DateTime start;
+    DateTime end = DateTime(now.year, now.month, now.day);
+
+    if (preset == 'all') {
+      setState(() {
+        _datePreset = 'all';
+        _selectedDateRange = null;
+      });
+      _fetch();
+      return;
+    }
+
+    switch (preset) {
+      case 'today':
+        start = DateTime(now.year, now.month, now.day);
+        end = DateTime(now.year, now.month, now.day);
+        break;
+      case 'yesterday':
+        final yest = now.subtract(const Duration(days: 1));
+        start = DateTime(yest.year, yest.month, yest.day);
+        end = DateTime(yest.year, yest.month, yest.day);
+        break;
+      case 'this_week':
+        start = now.subtract(Duration(days: now.weekday - 1));
+        start = DateTime(start.year, start.month, start.day);
+        break;
+      case 'this_month':
+        start = DateTime(now.year, now.month, 1);
+        break;
+      case 'last_month':
+        start = DateTime(now.year, now.month - 1, 1);
+        end = DateTime(now.year, now.month, 0);
+        break;
+      default:
+        start = DateTime(now.year, now.month, 1);
+    }
+
+    setState(() {
+      _datePreset = preset;
+      _selectedDateRange = DateTimeRange(start: start, end: end);
+    });
+    _fetch();
+  }
+
+  void _showDateRangeBottomSheet() {
+    HapticFeedback.lightImpact();
+    final now = DateTime.now();
+    DateTime tempStart = _selectedDateRange?.start ?? DateTime(now.year, now.month, 1);
+    DateTime tempEnd = _selectedDateRange?.end ?? now;
+    String tempPreset = _datePreset;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (modalContext, setModalState) {
+            final startStr = DateFormat('dd MMM yyyy').format(tempStart);
+            final endStr = DateFormat('dd MMM yyyy').format(tempEnd);
+            final days = tempEnd.difference(tempStart).inDays + 1;
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.date_range_rounded, color: Color(0xFF1E3A5F), size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Select Date Range',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E3A5F),
+                            ),
+                          ),
+                          Text(
+                            'Filter leads created between dates',
+                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Quick Presets Wrap
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _buildModalPresetChip('All Time', 'all', tempPreset, () {
+                        setModalState(() => tempPreset = 'all');
+                      }),
+                      _buildModalPresetChip('Today', 'today', tempPreset, () {
+                        setModalState(() {
+                          tempPreset = 'today';
+                          tempStart = DateTime(now.year, now.month, now.day);
+                          tempEnd = DateTime(now.year, now.month, now.day);
+                        });
+                      }),
+                      _buildModalPresetChip('Yesterday', 'yesterday', tempPreset, () {
+                        final yest = now.subtract(const Duration(days: 1));
+                        setModalState(() {
+                          tempPreset = 'yesterday';
+                          tempStart = DateTime(yest.year, yest.month, yest.day);
+                          tempEnd = DateTime(yest.year, yest.month, yest.day);
+                        });
+                      }),
+                      _buildModalPresetChip('This Week', 'this_week', tempPreset, () {
+                        final wStart = now.subtract(Duration(days: now.weekday - 1));
+                        setModalState(() {
+                          tempPreset = 'this_week';
+                          tempStart = DateTime(wStart.year, wStart.month, wStart.day);
+                          tempEnd = DateTime(now.year, now.month, now.day);
+                        });
+                      }),
+                      _buildModalPresetChip('This Month', 'this_month', tempPreset, () {
+                        setModalState(() {
+                          tempPreset = 'this_month';
+                          tempStart = DateTime(now.year, now.month, 1);
+                          tempEnd = DateTime(now.year, now.month, now.day);
+                        });
+                      }),
+                      _buildModalPresetChip('Last Month', 'last_month', tempPreset, () {
+                        setModalState(() {
+                          tempPreset = 'last_month';
+                          tempStart = DateTime(now.year, now.month - 1, 1);
+                          tempEnd = DateTime(now.year, now.month, 0);
+                        });
+                      }),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // From & To Date Boxes
+                  Row(
+                    children: [
+                      // FROM DATE BOX
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            final p = await showDatePicker(
+                              context: context,
+                              initialDate: tempStart,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                              helpText: 'SELECT FROM DATE',
+                            );
+                            if (p != null) {
+                              setModalState(() {
+                                tempPreset = 'custom';
+                                tempStart = p;
+                                if (tempEnd.isBefore(p)) tempEnd = p;
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E3A5F).withOpacity(0.04),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFF1E3A5F).withOpacity(0.2)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.calendar_today_rounded, size: 12, color: Color(0xFF1E3A5F)),
+                                    SizedBox(width: 4),
+                                    Text('FROM DATE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey)),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  tempPreset == 'all' ? 'Start' : startStr,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.arrow_forward_rounded, color: Color(0xFF1E3A5F), size: 16),
+                            if (tempPreset != 'all')
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1E3A5F),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '$days D',
+                                  style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      // TO DATE BOX
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            final p = await showDatePicker(
+                              context: context,
+                              initialDate: tempEnd.isBefore(tempStart) ? tempStart : tempEnd,
+                              firstDate: tempStart,
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                              helpText: 'SELECT TO DATE',
+                            );
+                            if (p != null) {
+                              setModalState(() {
+                                tempPreset = 'custom';
+                                tempEnd = p;
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E3A5F).withOpacity(0.04),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFF1E3A5F).withOpacity(0.2)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.event_available_rounded, size: 12, color: Color(0xFF1E3A5F)),
+                                    SizedBox(width: 4),
+                                    Text('TO DATE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey)),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  tempPreset == 'all' ? 'End' : endStr,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Action Buttons
+                  Row(
+                    children: [
+                      if (_selectedDateRange != null)
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _setDatePreset('all');
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text('Clear Filter'),
+                          ),
+                        ),
+                      if (_selectedDateRange != null) const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            if (tempPreset == 'all') {
+                              setState(() {
+                                _datePreset = 'all';
+                                _selectedDateRange = null;
+                              });
+                            } else {
+                              setState(() {
+                                _datePreset = tempPreset;
+                                _selectedDateRange = DateTimeRange(start: tempStart, end: tempEnd);
+                              });
+                            }
+                            _fetch();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1E3A5F),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Apply Date Range', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildModalPresetChip(String label, String key, String currentPreset, VoidCallback onTap) {
+    final isSelected = currentPreset == key;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey[100],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey[300]!,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected ? Colors.white : Colors.grey[800],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _search(String q) async {
@@ -81,7 +510,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     try {
       final res = await ApiService().searchLeads({'query': q});
       if (mounted && res['success'] == true) setState(() => _leads = res['data'] ?? []);
-    } catch (_) {}
+    } catch (e) { debugPrint('leads_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -101,21 +530,36 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     _priority = 'Medium';
   }
 
+  Future<void> _openCreateLead({Map<String, dynamic>? leadToEdit}) async {
+    HapticFeedback.mediumImpact();
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateLeadScreen(lead: leadToEdit),
+      ),
+    );
+
+    if (result is Map && result['success'] == true && mounted) {
+      final isNew = result['isNew'] == true;
+      _fetch();
+      _showMsg(result['message'] ?? (isNew ? '✅ Lead created successfully' : '✅ Lead updated successfully'));
+
+      final newId = int.tryParse('${result['id'] ?? 0}') ?? 0;
+      if (isNew && newId > 0 && result['data'] is Map) {
+        _openLead({
+          'id': newId,
+          ...result['data'],
+          'customer_phone': result['data']['phone'],
+          'status': 'new',
+        });
+      }
+    } else if (result == true && mounted) {
+      _fetch();
+    }
+  }
+
   void _editLead(Map<String, dynamic> l) async {
-    _editId = l['id'];
-    _nameCtrl.text = l['customer_name'] ?? '';
-    _phoneCtrl.text = l['phone'] ?? l['customer_phone'] ?? '';
-    _emailCtrl.text = l['email'] ?? l['customer_email'] ?? '';
-    _companyCtrl.text = l['company_name'] ?? '';
-    _cityCtrl.text = l['city'] ?? '';
-    _campaignCtrl.text = l['campaign_name'] ?? '';
-    _requirementCtrl.text = l['requirement'] ?? '';
-    _budgetCtrl.text = l['budget']?.toString() ?? '';
-    _notesCtrl.text = l['notes'] ?? '';
-    _source = l['source'] ?? l['lead_source'] ?? 'Website';
-    _priority = l['priority'] ?? 'Medium';
-    _selectedTelecaller = l['assigned_to'];
-    _showForm();
+    _openCreateLead(leadToEdit: l);
   }
 
   Future<void> _submit() async {
@@ -552,6 +996,30 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
         Container(
           margin: const EdgeInsets.only(right: 4),
           decoration: BoxDecoration(
+            color: _selectedDateRange != null
+                ? Colors.white.withOpacity(0.25)
+                : Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.2),
+              width: 1,
+            ),
+          ),
+          child: IconButton(
+            onPressed: _showDateRangeBottomSheet,
+            tooltip: 'Filter by Creation Date Range',
+            icon: const Icon(
+              Icons.calendar_month_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+            padding: const EdgeInsets.all(10),
+            constraints: const BoxConstraints(),
+          ),
+        ),
+        Container(
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.1),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
@@ -640,63 +1108,235 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       {'label': 'Lost', 'value': 'lost'},
     ];
 
-    return Container(
-      height: 44,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        children: filters.map((f) {
-          final active = _statusFilter == f['value'];
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: FilterChip(
-              label: Text(
-                f['label']!,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-                  color: active ? Colors.white : Colors.grey[700],
+    String dateLabel = 'All Dates';
+    if (_selectedDateRange != null) {
+      if (_selectedDateRange!.start.day == _selectedDateRange!.end.day &&
+          _selectedDateRange!.start.month == _selectedDateRange!.end.month &&
+          _selectedDateRange!.start.year == _selectedDateRange!.end.year) {
+        dateLabel = DateFormat('dd MMM').format(_selectedDateRange!.start);
+      } else {
+        dateLabel = '${DateFormat('dd MMM').format(_selectedDateRange!.start)} - ${DateFormat('dd MMM').format(_selectedDateRange!.end)}';
+      }
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          height: 44,
+          margin: const EdgeInsets.only(bottom: 4),
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            children: [
+              // Date Range picker chip
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: FilterChip(
+                  avatar: Icon(
+                    Icons.calendar_today_rounded,
+                    size: 13,
+                    color: _selectedDateRange != null ? Colors.white : const Color(0xFF1E3A5F),
+                  ),
+                  label: Text(
+                    dateLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: _selectedDateRange != null ? FontWeight.bold : FontWeight.normal,
+                      color: _selectedDateRange != null ? Colors.white : Colors.grey[700],
+                    ),
+                  ),
+                  selected: _selectedDateRange != null,
+                  selectedColor: const Color(0xFF1E3A5F),
+                  backgroundColor: Colors.white,
+                  checkmarkColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(
+                      color: _selectedDateRange != null ? const Color(0xFF1E3A5F) : Colors.grey[300]!,
+                      width: 1,
+                    ),
+                  ),
+                  onSelected: (_) => _showDateRangeBottomSheet(),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
               ),
-              selected: active,
-              selectedColor: const Color(0xFF1E3A5F),
-              backgroundColor: Colors.white,
-              checkmarkColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: active ? const Color(0xFF1E3A5F) : Colors.grey[300]!,
-                  width: 1,
-                ),
+              ...filters.map((f) {
+                final active = _statusFilter == f['value'];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: FilterChip(
+                    label: Text(
+                      f['label']!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                        color: active ? Colors.white : Colors.grey[700],
+                      ),
+                    ),
+                    selected: active,
+                    selectedColor: const Color(0xFF1E3A5F),
+                    backgroundColor: Colors.white,
+                    checkmarkColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(
+                        color: active ? const Color(0xFF1E3A5F) : Colors.grey[300]!,
+                        width: 1,
+                      ),
+                    ),
+                    onSelected: (_) {
+                      setState(() => _statusFilter = f['value']!);
+                      _fetch();
+                    },
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+        if (_selectedDateRange != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3A5F).withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF1E3A5F).withOpacity(0.15)),
               ),
-              onSelected: (_) {
-                setState(() => _statusFilter = f['value']!);
-                _fetch();
-              },
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.filter_alt_rounded, size: 14, color: Color(0xFF1E3A5F)),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Dates: ${DateFormat('dd MMM yyyy').format(_selectedDateRange!.start)} ➔ ${DateFormat('dd MMM yyyy').format(_selectedDateRange!.end)} (${_leads.length} Leads)',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E3A5F),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => _setDatePreset('all'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.close_rounded, size: 12, color: Colors.red.shade700),
+                          const SizedBox(width: 2),
+                          Text(
+                            'Clear',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          );
-        }).toList(),
-      ),
+          ),
+      ],
     );
   }
 
   // ==================== GLASS LEAD CARD ====================
   Widget _buildGlassLeadCard(Map<String, dynamic> l, String name, String phone, String status, Color statusColor) {
+    final city = l['city']?.toString() ?? '';
+    final source = l['source'] ?? l['lead_source'] ?? '';
+    final priority = l['priority']?.toString() ?? '';
+    final requirement = l['requirement']?.toString() ?? '';
+    final budget = l['budget'];
+
+    // Creator information
+    String creatorName = '';
+    if (l['creator_first'] != null && l['creator_first'].toString().trim().isNotEmpty) {
+      creatorName = "${l['creator_first']} ${l['creator_last'] ?? ''}".trim();
+      if (l['creator_code'] != null && l['creator_code'].toString().isNotEmpty) {
+        creatorName += " (${l['creator_code']})";
+      }
+    } else if (l['creator_username'] != null && l['creator_username'].toString().trim().isNotEmpty) {
+      creatorName = l['creator_username'].toString();
+    } else {
+      creatorName = 'Admin / System';
+    }
+
+    // Created At with Day
+    String createdWithDay = '';
+    if (l['created_at'] != null) {
+      final cdt = DateTime.tryParse(l['created_at'].toString());
+      if (cdt != null) {
+        createdWithDay = DateFormat('dd MMM yyyy (EEE), hh:mm a').format(cdt);
+      } else {
+        createdWithDay = l['created_at'].toString();
+      }
+    }
+
+    // Follow-up Date with Day
+    String? followUpFormatted;
+    String? followUpTag;
+    Color followUpTagColor = Colors.deepPurple;
+    final fupRaw = l['follow_up_date']?.toString();
+    if (fupRaw != null && fupRaw.isNotEmpty && fupRaw != '0000-00-00') {
+      final fdt = DateTime.tryParse(fupRaw);
+      if (fdt != null) {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        final fDateOnly = DateTime(fdt.year, fdt.month, fdt.day);
+
+        final dayDiff = fDateOnly.difference(today).inDays;
+        final dateStr = DateFormat('dd MMM yyyy (EEEE)').format(fdt);
+        final timeStr = l['follow_up_time'] != null && l['follow_up_time'].toString().isNotEmpty
+            ? ' at ${l['follow_up_time']}'
+            : '';
+
+        followUpFormatted = '$dateStr$timeStr';
+
+        if (dayDiff == 0) {
+          followUpTag = 'TODAY';
+          followUpTagColor = Colors.orange.shade800;
+        } else if (dayDiff < 0) {
+          followUpTag = 'OVERDUE';
+          followUpTagColor = Colors.red.shade700;
+        } else {
+          followUpTag = 'UPCOMING';
+          followUpTagColor = Colors.blue.shade700;
+        }
+      }
+    }
+
     return GestureDetector(
       onTap: () => _openLead(l),
       onLongPress: () => _showOptions(l),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          border: followUpTag == 'TODAY'
+              ? Border.all(color: Colors.orange.shade400, width: 1.5)
+              : (followUpTag == 'OVERDUE' ? Border.all(color: Colors.red.shade300, width: 1.5) : null),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.08),
+              color: Colors.grey.withOpacity(0.09),
               spreadRadius: 1,
               blurRadius: 12,
               offset: const Offset(0, 3),
@@ -704,109 +1344,281 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
           ],
         ),
         padding: const EdgeInsets.all(14),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : '?',
-                  style: TextStyle(
-                    color: statusColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
+            // Row 1: Avatar, Name, Badges
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: TextStyle(
+                        color: statusColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: Color(0xFF1E3A5F),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.phone_rounded,
-                        size: 12,
-                        color: Colors.grey[500],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        phone,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      if (l['city'] != null && l['city']!.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.location_on_rounded,
-                          size: 12,
-                          color: Colors.grey[500],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          l['city'],
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                      if (l['source'] != null && l['source']!.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            l['source'],
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.grey[600],
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: Color(0xFF1E3A5F),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              status.toUpperCase(),
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          if (priority.isNotEmpty) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.grey.shade300, width: 0.5),
+                              ),
+                              child: Text(
+                                priority.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                  color: priority.toLowerCase() == 'urgent'
+                                      ? Colors.red
+                                      : (priority.toLowerCase() == 'high' ? Colors.orange.shade800 : Colors.grey.shade700),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      // Phone, City, Source
+                      Row(
+                        children: [
+                          Icon(Icons.phone_rounded, size: 12, color: Colors.grey[600]),
+                          const SizedBox(width: 4),
+                          Text(
+                            phone,
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[800]),
+                          ),
+                          if (city.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Icon(Icons.location_on_rounded, size: 12, color: Colors.grey[500]),
+                            const SizedBox(width: 2),
+                            Flexible(
+                              child: Text(
+                                city,
+                                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                          if (source.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                source,
+                                style: TextStyle(fontSize: 9, color: Colors.blue.shade800, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+            const Divider(height: 1, thickness: 0.5),
+            const SizedBox(height: 8),
+
+            // FOLLOW UP DATE WITH DAY (DIRECTLY VISIBLE)
+            if (followUpFormatted != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: followUpTagColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: followUpTagColor.withOpacity(0.25), width: 0.8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      followUpTag == 'TODAY'
+                          ? Icons.alarm_on_rounded
+                          : (followUpTag == 'OVERDUE' ? Icons.warning_amber_rounded : Icons.event_available_rounded),
+                      size: 15,
+                      color: followUpTagColor,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'FOLLOW-UP: $followUpFormatted',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: followUpTagColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: followUpTagColor,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        followUpTag ?? 'SCHEDULED',
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.event_busy_rounded, size: 13, color: Colors.grey.shade400),
+                    const SizedBox(width: 5),
+                    Text(
+                      'No follow-up scheduled',
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                    ),
+                  ],
+                ),
+              ),
+
+            // CREATED BY & CREATION TIMESTAMP (DIRECTLY VISIBLE)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.person_pin_rounded, size: 13, color: Color(0xFF1E3A5F)),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        children: [
+                          const TextSpan(
+                            text: 'Created by: ',
+                            style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.normal),
+                          ),
+                          TextSpan(
+                            text: creatorName,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E3A5F),
+                            ),
+                          ),
+                          if (createdWithDay.isNotEmpty) ...[
+                            const TextSpan(
+                              text: ' • ',
+                              style: TextStyle(fontSize: 10, color: Colors.grey),
+                            ),
+                            TextSpan(
+                              text: createdWithDay,
+                              style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                            ),
+                          ],
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
+
+            if (requirement.isNotEmpty || (budget != null && budget.toString() != '0')) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  if (requirement.isNotEmpty)
+                    Expanded(
+                      child: Text(
+                        '📝 $requirement',
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  if (budget != null && budget.toString() != '0') ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      '₹$budget',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green),
+                    ),
+                  ],
+                ],
               ),
-              child: Text(
-                status.toUpperCase(),
-                style: TextStyle(
-                  color: statusColor,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+            ],
           ],
         ),
       ),
@@ -849,11 +1661,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
   // ==================== FLOATING ACTION BUTTON ====================
   Widget _buildFAB() {
     return FloatingActionButton(
-      onPressed: () {
-        HapticFeedback.mediumImpact();
-        _resetForm();
-        _showForm();
-      },
+      onPressed: () => _openCreateLead(),
       backgroundColor: const Color(0xFF1E3A5F),
       foregroundColor: Colors.white,
       elevation: 4,
@@ -1208,5 +2016,17 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       ),
     );
+  }
+
+  String _formatLeadDate(dynamic dateTimeStr) {
+    if (dateTimeStr == null) return '';
+    final s = dateTimeStr.toString().trim();
+    if (s.isEmpty || s == 'null') return '';
+    try {
+      final dt = DateTime.parse(s.contains(' ') ? s.replaceAll(' ', 'T') : s);
+      return DateFormat('dd MMM, hh:mm a').format(dt);
+    } catch (_) {
+      return s;
+    }
   }
 }

@@ -109,7 +109,7 @@ class _DocumentScreenState extends State<DocumentScreen> with SingleTickerProvid
       if (mounted && res['success'] == true) {
         setState(() => _documents = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('document_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 
