@@ -1246,143 +1246,363 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
   Widget _buildGlassLeadCard(Map<String, dynamic> l, String name, String phone, String status, Color statusColor) {
     final city = l['city']?.toString() ?? '';
     final source = l['source'] ?? l['lead_source'] ?? '';
-    final createdAt = l['created_at'] != null ? _formatLeadDate(l['created_at']) : '';
+    final priority = l['priority']?.toString() ?? '';
+    final requirement = l['requirement']?.toString() ?? '';
+    final budget = l['budget'];
+
+    // Creator information
+    String creatorName = '';
+    if (l['creator_first'] != null && l['creator_first'].toString().trim().isNotEmpty) {
+      creatorName = "${l['creator_first']} ${l['creator_last'] ?? ''}".trim();
+      if (l['creator_code'] != null && l['creator_code'].toString().isNotEmpty) {
+        creatorName += " (${l['creator_code']})";
+      }
+    } else if (l['creator_username'] != null && l['creator_username'].toString().trim().isNotEmpty) {
+      creatorName = l['creator_username'].toString();
+    } else {
+      creatorName = 'Admin / System';
+    }
+
+    // Created At with Day
+    String createdWithDay = '';
+    if (l['created_at'] != null) {
+      final cdt = DateTime.tryParse(l['created_at'].toString());
+      if (cdt != null) {
+        createdWithDay = DateFormat('dd MMM yyyy (EEE), hh:mm a').format(cdt);
+      } else {
+        createdWithDay = l['created_at'].toString();
+      }
+    }
+
+    // Follow-up Date with Day
+    String? followUpFormatted;
+    String? followUpTag;
+    Color followUpTagColor = Colors.deepPurple;
+    final fupRaw = l['follow_up_date']?.toString();
+    if (fupRaw != null && fupRaw.isNotEmpty && fupRaw != '0000-00-00') {
+      final fdt = DateTime.tryParse(fupRaw);
+      if (fdt != null) {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        final fDateOnly = DateTime(fdt.year, fdt.month, fdt.day);
+
+        final dayDiff = fDateOnly.difference(today).inDays;
+        final dateStr = DateFormat('dd MMM yyyy (EEEE)').format(fdt);
+        final timeStr = l['follow_up_time'] != null && l['follow_up_time'].toString().isNotEmpty
+            ? ' at ${l['follow_up_time']}'
+            : '';
+
+        followUpFormatted = '$dateStr$timeStr';
+
+        if (dayDiff == 0) {
+          followUpTag = 'TODAY';
+          followUpTagColor = Colors.orange.shade800;
+        } else if (dayDiff < 0) {
+          followUpTag = 'OVERDUE';
+          followUpTagColor = Colors.red.shade700;
+        } else {
+          followUpTag = 'UPCOMING';
+          followUpTagColor = Colors.blue.shade700;
+        }
+      }
+    }
 
     return GestureDetector(
       onTap: () => _openLead(l),
       onLongPress: () => _showOptions(l),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          border: followUpTag == 'TODAY'
+              ? Border.all(color: Colors.orange.shade400, width: 1.5)
+              : (followUpTag == 'OVERDUE' ? Border.all(color: Colors.red.shade300, width: 1.5) : null),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.08),
+              color: Colors.grey.withOpacity(0.09),
               spreadRadius: 1,
               blurRadius: 12,
               offset: const Offset(0, 3),
             ),
           ],
         ),
-        padding: const EdgeInsets.all(12),
-        child: Row(
+        padding: const EdgeInsets.all(14),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : '?',
-                  style: TextStyle(
-                    color: statusColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
+            // Row 1: Avatar, Name, Badges
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: TextStyle(
+                        color: statusColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
                   ),
                 ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: Color(0xFF1E3A5F),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              status.toUpperCase(),
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          if (priority.isNotEmpty) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.grey.shade300, width: 0.5),
+                              ),
+                              child: Text(
+                                priority.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                  color: priority.toLowerCase() == 'urgent'
+                                      ? Colors.red
+                                      : (priority.toLowerCase() == 'high' ? Colors.orange.shade800 : Colors.grey.shade700),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      // Phone, City, Source
+                      Row(
+                        children: [
+                          Icon(Icons.phone_rounded, size: 12, color: Colors.grey[600]),
+                          const SizedBox(width: 4),
+                          Text(
+                            phone,
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[800]),
+                          ),
+                          if (city.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Icon(Icons.location_on_rounded, size: 12, color: Colors.grey[500]),
+                            const SizedBox(width: 2),
+                            Flexible(
+                              child: Text(
+                                city,
+                                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                          if (source.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                source,
+                                style: TextStyle(fontSize: 9, color: Colors.blue.shade800, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+            const Divider(height: 1, thickness: 0.5),
+            const SizedBox(height: 8),
+
+            // FOLLOW UP DATE WITH DAY (DIRECTLY VISIBLE)
+            if (followUpFormatted != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: followUpTagColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: followUpTagColor.withOpacity(0.25), width: 0.8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      followUpTag == 'TODAY'
+                          ? Icons.alarm_on_rounded
+                          : (followUpTag == 'OVERDUE' ? Icons.warning_amber_rounded : Icons.event_available_rounded),
+                      size: 15,
+                      color: followUpTagColor,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'FOLLOW-UP: $followUpFormatted',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: followUpTagColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: followUpTagColor,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        followUpTag ?? 'SCHEDULED',
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.event_busy_rounded, size: 13, color: Colors.grey.shade400),
+                    const SizedBox(width: 5),
+                    Text(
+                      'No follow-up scheduled',
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                    ),
+                  ],
+                ),
+              ),
+
+            // CREATED BY & CREATION TIMESTAMP (DIRECTLY VISIBLE)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.person_pin_rounded, size: 13, color: Color(0xFF1E3A5F)),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        children: [
+                          const TextSpan(
+                            text: 'Created by: ',
+                            style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.normal),
+                          ),
+                          TextSpan(
+                            text: creatorName,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E3A5F),
+                            ),
+                          ),
+                          if (createdWithDay.isNotEmpty) ...[
+                            const TextSpan(
+                              text: ' • ',
+                              style: TextStyle(fontSize: 10, color: Colors.grey),
+                            ),
+                            TextSpan(
+                              text: createdWithDay,
+                              style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                            ),
+                          ],
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+
+            if (requirement.isNotEmpty || (budget != null && budget.toString() != '0')) ...[
+              const SizedBox(height: 6),
+              Row(
                 children: [
-                  // Row 1: Name and Status Badge
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: Color(0xFF1E3A5F),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                  if (requirement.isNotEmpty)
+                    Expanded(
+                      child: Text(
+                        '📝 $requirement',
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          status.toUpperCase(),
-                          style: TextStyle(
-                            color: statusColor,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-
-                  // Row 2: Phone, City & Source
-                  Row(
-                    children: [
-                      Icon(Icons.phone_rounded, size: 11, color: Colors.grey[500]),
-                      const SizedBox(width: 3),
-                      Text(
-                        phone,
-                        style: TextStyle(fontSize: 11, color: Colors.grey[700]),
-                      ),
-                      if (city.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        Icon(Icons.location_on_rounded, size: 11, color: Colors.grey[500]),
-                        const SizedBox(width: 2),
-                        Flexible(
-                          child: Text(
-                            city,
-                            style: TextStyle(fontSize: 11, color: Colors.grey[700]),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                      if (source.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: Colors.grey[300]!, width: 0.5),
-                          ),
-                          child: Text(
-                            source,
-                            style: TextStyle(fontSize: 9, color: Colors.grey[600]),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                  // Row 3: Created timestamp
-                  if (createdAt.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.access_time_rounded, size: 11, color: Colors.grey[400]),
-                        const SizedBox(width: 3),
-                        Text(
-                          'Created: $createdAt',
-                          style: TextStyle(fontSize: 10, color: Colors.grey[500]),
-                        ),
-                      ],
+                    ),
+                  if (budget != null && budget.toString() != '0') ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      '₹$budget',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green),
                     ),
                   ],
                 ],
               ),
-            ),
+            ],
           ],
         ),
       ),
