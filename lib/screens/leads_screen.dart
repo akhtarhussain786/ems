@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -16,6 +17,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
   List<dynamic> _leads = [];
   bool _loading = true;
   final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
   String _statusFilter = '';
   DateTimeRange? _selectedDateRange;
   String _datePreset = 'all'; // 'all', 'today', 'yesterday', 'this_week', 'this_month', 'last_month', 'custom'
@@ -56,6 +58,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _animationController.dispose();
     _searchCtrl.dispose();
     _nameCtrl.dispose();
@@ -74,6 +77,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     setState(() => _loading = true);
     try {
       final reqData = <String, dynamic>{
+        if (_searchCtrl.text.trim().isNotEmpty) 'search': _searchCtrl.text.trim(),
         if (_statusFilter.isNotEmpty) 'status': _statusFilter,
         if (_selectedDateRange != null) ...{
           'from_date': DateFormat('yyyy-MM-dd').format(_selectedDateRange!.start),
@@ -84,6 +88,18 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       if (mounted && res['success'] == true) setState(() => _leads = res['data'] ?? []);
     } catch (e) { debugPrint('leads_screen: $e'); }
     if (mounted) setState(() => _loading = false);
+  }
+
+  void _search(String query) {
+    setState(() {});
+    _searchDebounce?.cancel();
+    if (query.trim().isEmpty) {
+      _fetch();
+    } else {
+      _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+        if (mounted) _fetch();
+      });
+    }
   }
 
   Future<void> _pickDateRange() async {

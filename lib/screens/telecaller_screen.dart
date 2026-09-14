@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -21,6 +22,7 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
 
   // Search & Filter Controllers & State
   final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
   String _statusFilter = '';
   String _priorityFilter = '';
   String _sourceFilter = '';
@@ -67,6 +69,7 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _animationController.dispose();
     _searchCtrl.dispose();
     super.dispose();
@@ -112,7 +115,20 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
     if (mounted) setState(() => _loading = false);
   }
 
+  void _onSearchChanged(String v) {
+    setState(() {});
+    _searchDebounce?.cancel();
+    if (v.trim().isEmpty) {
+      _fetch();
+    } else {
+      _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+        if (mounted) _fetch();
+      });
+    }
+  }
+
   void _onSearchSubmitted([String? query]) {
+    _searchDebounce?.cancel();
     HapticFeedback.lightImpact();
     _fetch();
   }
@@ -1135,17 +1151,12 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                     icon: Icon(Icons.clear_rounded, color: Colors.grey[400], size: 20),
                     onPressed: () {
                       _searchCtrl.clear();
-                      _fetch();
+                      _onSearchSubmitted();
                     },
                   )
                       : null,
                 ),
-                onChanged: (v) {
-                  setState(() {});
-                  if (v.isEmpty) {
-                    _fetch();
-                  }
-                },
+                onChanged: _onSearchChanged,
               ),
             ),
           ),
