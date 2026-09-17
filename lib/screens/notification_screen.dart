@@ -105,6 +105,7 @@ class _NotificationScreenState extends State<NotificationScreen> with SingleTick
 
   IconData _icon(String type) {
     switch (type) {
+      case 'holiday': return Icons.celebration_rounded;
       case 'follow_up': return Icons.alarm_on_rounded;
       case 'leave': return Icons.event_rounded;
       case 'task': return Icons.assignment_rounded;
@@ -118,6 +119,7 @@ class _NotificationScreenState extends State<NotificationScreen> with SingleTick
 
   Color _iconColor(String type) {
     switch (type) {
+      case 'holiday': return Colors.deepOrange;
       case 'follow_up': return Colors.deepPurple;
       case 'leave': return Colors.purple;
       case 'task': return Colors.blue;
