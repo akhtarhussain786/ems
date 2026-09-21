@@ -19,8 +19,15 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
   final _searchCtrl = TextEditingController();
   Timer? _searchDebounce;
   String _statusFilter = '';
+  String _priorityFilter = '';
+  String _sourceFilter = '';
+  String _followUpFilter = '';
+  int? _createdByFilter;
+  String? _createdByNameFilter;
+  List<Map<String, dynamic>> _creators = [];
   DateTimeRange? _selectedDateRange;
   String _datePreset = 'all'; // 'all', 'today', 'yesterday', 'this_week', 'this_month', 'last_month', 'custom'
+  String _sortBy = 'default'; // 'default', 'newest', 'oldest', 'follow_up_asc', 'follow_up_desc', 'name_asc'
   final _formKey = GlobalKey<FormState>();
   bool _submitting = false;
   final _nameCtrl = TextEditingController();
@@ -39,8 +46,49 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
-  final List<String> _sources = ['Facebook', 'Google', 'Instagram', 'Website', 'WhatsApp', 'Referral', 'Manual', 'Other'];
+  final List<String> _sources = ['Facebook', 'Google', 'Instagram', 'Website', 'WhatsApp', 'Referral', 'Manual', 'Field Visit', 'Call', 'Other'];
   final List<String> _priorities = ['Low', 'Medium', 'High', 'Urgent'];
+  final List<String> _statuses = [
+    'new', 'calling', 'connected', 'interested', 'qualified',
+    'follow_up', 'busy', 'no_answer', 'not_interested', 'wrong_number', 'duplicate', 'lost', 'won'
+  ];
+
+  int get _activeFilterCount {
+    int count = 0;
+    if (_searchCtrl.text.trim().isNotEmpty) count++;
+    if (_statusFilter.isNotEmpty) count++;
+    if (_priorityFilter.isNotEmpty) count++;
+    if (_sourceFilter.isNotEmpty) count++;
+    if (_followUpFilter.isNotEmpty) count++;
+    if (_createdByFilter != null) count++;
+    if (_datePreset != 'all') count++;
+    if (_sortBy != 'default') count++;
+    return count;
+  }
+
+  List<Map<String, dynamic>> get _availableCreators {
+    if (_creators.isNotEmpty) return _creators;
+    final Map<int, Map<String, dynamic>> map = {};
+    for (final l in _leads) {
+      final id = l['creator_id'] ?? l['created_by'] ?? l['employee_id'];
+      if (id != null && int.tryParse(id.toString()) != null) {
+        final intId = int.parse(id.toString());
+        String name = '';
+        if (l['creator_first'] != null && l['creator_first'].toString().trim().isNotEmpty) {
+          name = "${l['creator_first']} ${l['creator_last'] ?? ''}".trim();
+          if (l['creator_code'] != null && l['creator_code'].toString().isNotEmpty) {
+            name += " (${l['creator_code']})";
+          }
+        } else if (l['creator_username'] != null && l['creator_username'].toString().trim().isNotEmpty) {
+          name = l['creator_username'].toString();
+        }
+        if (name.isNotEmpty && !map.containsKey(intId)) {
+          map[intId] = {'id': intId, 'name': name};
+        }
+      }
+    }
+    return map.values.toList();
+  }
 
   @override
   void initState() {
@@ -53,7 +101,21 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _fetch();
+    _fetchCreators();
     _animationController.forward();
+  }
+
+  Future<void> _fetchCreators() async {
+    try {
+      final res = await ApiService().get('leads/creators');
+      if (mounted && res['success'] == true && res['data'] is List) {
+        setState(() {
+          _creators = List<Map<String, dynamic>>.from(res['data']);
+        });
+      }
+    } catch (e) {
+      debugPrint('leads_screen fetch creators error: $e');
+    }
   }
 
   @override
@@ -79,6 +141,11 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
       final reqData = <String, dynamic>{
         if (_searchCtrl.text.trim().isNotEmpty) 'search': _searchCtrl.text.trim(),
         if (_statusFilter.isNotEmpty) 'status': _statusFilter,
+        if (_priorityFilter.isNotEmpty) 'priority': _priorityFilter.toLowerCase(),
+        if (_sourceFilter.isNotEmpty) 'source': _sourceFilter,
+        if (_followUpFilter.isNotEmpty) 'follow_up_filter': _followUpFilter,
+        if (_createdByFilter != null) 'created_by': _createdByFilter,
+        if (_sortBy != 'default') 'sort_by': _sortBy,
         if (_selectedDateRange != null) ...{
           'from_date': DateFormat('yyyy-MM-dd').format(_selectedDateRange!.start),
           'to_date': DateFormat('yyyy-MM-dd').format(_selectedDateRange!.end),
@@ -90,8 +157,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     if (mounted) setState(() => _loading = false);
   }
 
-  void _search(String query) {
-    setState(() {});
+  void _onSearchChanged(String query) {
     _searchDebounce?.cancel();
     if (query.trim().isEmpty) {
       _fetch();
@@ -102,44 +168,27 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     }
   }
 
-  Future<void> _pickDateRange() async {
+  void _onSearchSubmitted([String? query]) {
+    _searchDebounce?.cancel();
+    HapticFeedback.lightImpact();
+    _fetch();
+  }
+
+  void _resetFilters() {
     HapticFeedback.selectionClick();
-    final now = DateTime.now();
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      initialDateRange: _selectedDateRange ?? DateTimeRange(
-        start: DateTime(now.year, now.month, 1),
-        end: now,
-      ),
-      helpText: 'FILTER LEADS BY CREATION DATE RANGE',
-      confirmText: 'APPLY DATE RANGE',
-      saveText: 'SELECT',
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF1E3A5F),
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: Color(0xFF1E3A5F),
-            ),
-            dialogTheme: DialogThemeData(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      setState(() {
-        _datePreset = 'custom';
-        _selectedDateRange = picked;
-      });
-      _fetch();
-    }
+    setState(() {
+      _searchCtrl.clear();
+      _statusFilter = '';
+      _priorityFilter = '';
+      _sourceFilter = '';
+      _followUpFilter = '';
+      _createdByFilter = null;
+      _createdByNameFilter = null;
+      _datePreset = 'all';
+      _selectedDateRange = null;
+      _sortBy = 'default';
+    });
+    _fetch();
   }
 
   void _setDatePreset(String preset) {
@@ -504,32 +553,6 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     );
   }
 
-  Future<void> _search(String q) async {
-    if (q.length < 2) { _fetch(); return; }
-    setState(() => _loading = true);
-    try {
-      final res = await ApiService().searchLeads({'query': q});
-      if (mounted && res['success'] == true) setState(() => _leads = res['data'] ?? []);
-    } catch (e) { debugPrint('leads_screen: $e'); }
-    if (mounted) setState(() => _loading = false);
-  }
-
-  void _resetForm() {
-    _editId = null;
-    _selectedTelecaller = null;
-    _nameCtrl.clear();
-    _phoneCtrl.clear();
-    _emailCtrl.clear();
-    _companyCtrl.clear();
-    _cityCtrl.clear();
-    _campaignCtrl.clear();
-    _requirementCtrl.clear();
-    _budgetCtrl.clear();
-    _notesCtrl.clear();
-    _source = 'Website';
-    _priority = 'Medium';
-  }
-
   Future<void> _openCreateLead({Map<String, dynamic>? leadToEdit}) async {
     HapticFeedback.mediumImpact();
     final result = await Navigator.push(
@@ -880,6 +903,7 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
         child: Column(
           children: [
             _buildSearchBar(),
+            _buildActiveFiltersBanner(),
             _buildFilterChips(),
             Expanded(
               child: _loading
@@ -1052,48 +1076,483 @@ class _LeadsScreenState extends State<LeadsScreen> with SingleTickerProviderStat
     );
   }
 
-  // ==================== SEARCH BAR ====================
+  // ==================== SEARCH BAR & FILTER BUTTON ====================
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.08),
-              spreadRadius: 1,
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+      child: Row(
+        children: [
+          // Search Input
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.08),
+                    spreadRadius: 1,
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: TextField(
+                controller: _searchCtrl,
+                textInputAction: TextInputAction.search,
+                onSubmitted: _onSearchSubmitted,
+                decoration: InputDecoration(
+                  hintText: 'Search by name, phone, city, notes...',
+                  hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
+                  prefixIcon: IconButton(
+                    icon: const Icon(Icons.search_rounded, color: Color(0xFF1E3A5F)),
+                    onPressed: () => _onSearchSubmitted(),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  suffixIcon: _searchCtrl.text.isNotEmpty
+                      ? IconButton(
+                    icon: Icon(Icons.clear_rounded, color: Colors.grey[400], size: 20),
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      _onSearchSubmitted();
+                    },
+                  )
+                      : null,
+                ),
+                onChanged: _onSearchChanged,
+              ),
             ),
-          ],
-        ),
-        child: TextField(
-          controller: _searchCtrl,
-          decoration: InputDecoration(
-            hintText: 'Search leads...',
-            hintStyle: TextStyle(color: Colors.grey[400]),
-            prefixIcon: Icon(Icons.search_rounded, color: Colors.grey[400]),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(vertical: 10),
-            suffixIcon: _searchCtrl.text.isNotEmpty
-                ? IconButton(
-              icon: Icon(Icons.clear_rounded, color: Colors.grey[400]),
-              onPressed: () {
-                _searchCtrl.clear();
-                _fetch();
-              },
-            )
-                : null,
           ),
-          onChanged: (v) => _search(v),
+          const SizedBox(width: 8),
+
+          // Dedicated Search Action Button
+          GestureDetector(
+            onTap: () => _onSearchSubmitted(),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3A5F),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1E3A5F).withOpacity(0.3),
+                    spreadRadius: 1,
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.search_rounded, color: Colors.white, size: 20),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Filter Button with Badge
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              GestureDetector(
+                onTap: _openFilterModal,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _activeFilterCount > 0 ? const Color(0xFF1E3A5F) : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _activeFilterCount > 0 ? const Color(0xFF1E3A5F) : Colors.grey.shade300,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.08),
+                        spreadRadius: 1,
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.filter_list_rounded,
+                    color: _activeFilterCount > 0 ? Colors.white : const Color(0xFF1E3A5F),
+                    size: 20,
+                  ),
+                ),
+              ),
+              if (_activeFilterCount > 0)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '$_activeFilterCount',
+                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== ACTIVE FILTERS BANNER ====================
+  Widget _buildActiveFiltersBanner() {
+    if (_activeFilterCount == 0) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E3A5F).withOpacity(0.06),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.tune_rounded, size: 14, color: Color(0xFF1E3A5F)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Filtered by: ${_followUpFilter.isNotEmpty ? 'Follow-up: $_followUpFilter • ' : ''}${_createdByFilter != null ? 'Created by: ${_createdByNameFilter ?? '#$_createdByFilter'} • ' : ''}${_statusFilter.isNotEmpty ? 'Status: $_statusFilter • ' : ''}${_priorityFilter.isNotEmpty ? 'Priority: $_priorityFilter • ' : ''}${_sourceFilter.isNotEmpty ? 'Source: $_sourceFilter • ' : ''}${_datePreset != 'all' ? 'Date: $_datePreset • ' : ''}${_searchCtrl.text.isNotEmpty ? 'Search: "${_searchCtrl.text}"' : ''}',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1E3A5F)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          GestureDetector(
+            onTap: _resetFilters,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text('Clear', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== FILTER MODAL ====================
+  void _openFilterModal() {
+    HapticFeedback.lightImpact();
+
+    String tempStatus = _statusFilter;
+    String tempPriority = _priorityFilter;
+    String tempSource = _sourceFilter;
+    String tempFollowUp = _followUpFilter;
+    int? tempCreatedBy = _createdByFilter;
+    String? tempCreatedByName = _createdByNameFilter;
+    String tempDatePreset = _datePreset;
+    DateTimeRange? tempRange = _selectedDateRange;
+    String tempSort = _sortBy;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return Container(
+            padding: EdgeInsets.only(
+              top: 20,
+              left: 20,
+              right: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Title Row
+                  Row(
+                    children: [
+                      const Icon(Icons.filter_alt_rounded, color: Color(0xFF1E3A5F)),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Filter & Sort Leads',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F)),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          setModalState(() {
+                            tempStatus = '';
+                            tempPriority = '';
+                            tempSource = '';
+                            tempFollowUp = '';
+                            tempCreatedBy = null;
+                            tempCreatedByName = null;
+                            tempDatePreset = 'all';
+                            tempRange = null;
+                            tempSort = 'default';
+                          });
+                        },
+                        child: const Text('Reset All', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+
+                  // 1. Follow-up Filter
+                  const Text('FOLLOW-UP FILTER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _buildModalFilterChip('All', tempFollowUp == '', () => setModalState(() => tempFollowUp = '')),
+                      _buildModalFilterChip('🔔 Today\'s Follow-up', tempFollowUp == 'today', () => setModalState(() => tempFollowUp = 'today'), activeColor: Colors.orange.shade800),
+                      _buildModalFilterChip('⚠️ Overdue', tempFollowUp == 'overdue', () => setModalState(() => tempFollowUp = 'overdue'), activeColor: Colors.red),
+                      _buildModalFilterChip('📅 Upcoming', tempFollowUp == 'upcoming', () => setModalState(() => tempFollowUp = 'upcoming'), activeColor: Colors.blue),
+                      _buildModalFilterChip('Has Follow-up', tempFollowUp == 'has_follow_up', () => setModalState(() => tempFollowUp = 'has_follow_up')),
+                      _buildModalFilterChip('No Follow-up', tempFollowUp == 'no_follow_up', () => setModalState(() => tempFollowUp = 'no_follow_up')),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 2. Created Date Range Presets
+                  const Text('CREATED DATE PRESET', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _buildModalFilterChip('All Time', tempDatePreset == 'all', () {
+                        setModalState(() {
+                          tempDatePreset = 'all';
+                          tempRange = null;
+                        });
+                      }),
+                      _buildModalFilterChip('Today', tempDatePreset == 'today', () {
+                        final now = DateTime.now();
+                        final t = DateTime(now.year, now.month, now.day);
+                        setModalState(() {
+                          tempDatePreset = 'today';
+                          tempRange = DateTimeRange(start: t, end: t);
+                        });
+                      }),
+                      _buildModalFilterChip('Yesterday', tempDatePreset == 'yesterday', () {
+                        final now = DateTime.now();
+                        final y = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
+                        setModalState(() {
+                          tempDatePreset = 'yesterday';
+                          tempRange = DateTimeRange(start: y, end: y);
+                        });
+                      }),
+                      _buildFilterChipModal('This Week', tempDatePreset == 'this_week', () {
+                        final now = DateTime.now();
+                        final start = now.subtract(Duration(days: now.weekday - 1));
+                        setModalState(() {
+                          tempDatePreset = 'this_week';
+                          tempRange = DateTimeRange(start: DateTime(start.year, start.month, start.day), end: DateTime(now.year, now.month, now.day));
+                        });
+                      }),
+                      _buildFilterChipModal('This Month', tempDatePreset == 'this_month', () {
+                        final now = DateTime.now();
+                        setModalState(() {
+                          tempDatePreset = 'this_month';
+                          tempRange = DateTimeRange(start: DateTime(now.year, now.month, 1), end: DateTime(now.year, now.month, now.day));
+                        });
+                      }),
+                      _buildFilterChipModal('Custom Range', tempDatePreset == 'custom', () async {
+                        final now = DateTime.now();
+                        final picked = await showDateRangePicker(
+                          context: context,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                          initialDateRange: tempRange ?? DateTimeRange(start: DateTime(now.year, now.month, 1), end: now),
+                        );
+                        if (picked != null) {
+                          setModalState(() {
+                            tempDatePreset = 'custom';
+                            tempRange = picked;
+                          });
+                        }
+                      }),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 3. Status Filter
+                  const Text('STATUS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _buildModalFilterChip('All Status', tempStatus.isEmpty, () => setModalState(() => tempStatus = '')),
+                      ..._statuses.map((st) => _buildModalFilterChip(
+                        st.replaceAll('_', ' ').toUpperCase(),
+                        tempStatus == st,
+                            () => setModalState(() => tempStatus = st),
+                      )),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 4. Priority Filter
+                  const Text('PRIORITY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      _buildModalFilterChip('All', tempPriority.isEmpty, () => setModalState(() => tempPriority = '')),
+                      ..._priorities.map((p) => _buildModalFilterChip(
+                        p,
+                        tempPriority.toLowerCase() == p.toLowerCase(),
+                            () => setModalState(() => tempPriority = p.toLowerCase()),
+                      )),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 5. Source Filter
+                  const Text('SOURCE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _buildModalFilterChip('All Sources', tempSource.isEmpty, () => setModalState(() => tempSource = '')),
+                      ..._sources.map((src) => _buildModalFilterChip(
+                        src,
+                        tempSource == src,
+                            () => setModalState(() => tempSource = src),
+                      )),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 6. Created By Filter (Staff / Specific Person)
+                  const Text('CREATED BY (STAFF / SPECIFIC PERSON)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _buildModalFilterChip(
+                        'All Creators',
+                        tempCreatedBy == null,
+                        () => setModalState(() {
+                          tempCreatedBy = null;
+                          tempCreatedByName = null;
+                        }),
+                      ),
+                      ..._availableCreators.map((c) {
+                        final cId = int.tryParse(c['id'].toString());
+                        final cName = c['name'] ?? 'Staff #${c['id']}';
+                        final code = c['employee_code'] != null && c['employee_code'].toString().isNotEmpty ? ' (${c['employee_code']})' : '';
+                        final label = '$cName$code';
+                        return _buildModalFilterChip(
+                          label,
+                          tempCreatedBy == cId,
+                          () => setModalState(() {
+                            tempCreatedBy = cId;
+                            tempCreatedByName = cName;
+                          }),
+                        );
+                      }),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 7. Sort By
+                  const Text('SORT BY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _buildModalFilterChip('Default (Newest)', tempSort == 'default', () => setModalState(() => tempSort = 'default')),
+                      _buildModalFilterChip('Newest First', tempSort == 'newest', () => setModalState(() => tempSort = 'newest')),
+                      _buildModalFilterChip('Oldest First', tempSort == 'oldest', () => setModalState(() => tempSort = 'oldest')),
+                      _buildModalFilterChip('Follow-up Date (Earliest)', tempSort == 'follow_up_asc', () => setModalState(() => tempSort = 'follow_up_asc')),
+                      _buildModalFilterChip('Follow-up Date (Latest)', tempSort == 'follow_up_desc', () => setModalState(() => tempSort = 'follow_up_desc')),
+                      _buildModalFilterChip('Name (A-Z)', tempSort == 'name_asc', () => setModalState(() => tempSort = 'name_asc')),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Apply Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          _statusFilter = tempStatus;
+                          _priorityFilter = tempPriority;
+                          _sourceFilter = tempSource;
+                          _followUpFilter = tempFollowUp;
+                          _createdByFilter = tempCreatedBy;
+                          _createdByNameFilter = tempCreatedByName;
+                          _datePreset = tempDatePreset;
+                          _selectedDateRange = tempRange;
+                          _sortBy = tempSort;
+                        });
+                        Navigator.pop(context);
+                        _fetch();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1E3A5F),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('Apply Filters', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildModalFilterChip(String label, bool isSelected, VoidCallback onTap, {Color? activeColor}) {
+    final color = activeColor ?? const Color(0xFF1E3A5F);
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.12) : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey.shade300,
+            width: isSelected ? 1.5 : 0.8,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? color : Colors.grey.shade800,
+          ),
         ),
       ),
     );
+  }
+
+  Widget _buildFilterChipModal(String label, bool isSelected, VoidCallback onTap, {Color? activeColor}) {
+    return _buildModalFilterChip(label, isSelected, onTap, activeColor: activeColor);
   }
 
   // ==================== FILTER CHIPS ====================

@@ -27,6 +27,9 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
   String _priorityFilter = '';
   String _sourceFilter = '';
   String _followUpFilter = ''; // 'today', 'overdue', 'upcoming', 'has_follow_up', 'no_follow_up'
+  int? _createdByFilter;
+  String? _createdByNameFilter;
+  List<Map<String, dynamic>> _creators = [];
   String _datePreset = 'all'; // 'all', 'today', 'yesterday', 'this_week', 'this_month', 'custom'
   DateTimeRange? _selectedDateRange;
   String _sortBy = 'default'; // 'default', 'newest', 'oldest', 'follow_up_asc', 'follow_up_desc', 'name_asc'
@@ -48,9 +51,34 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
     if (_priorityFilter.isNotEmpty) count++;
     if (_sourceFilter.isNotEmpty) count++;
     if (_followUpFilter.isNotEmpty) count++;
+    if (_createdByFilter != null) count++;
     if (_datePreset != 'all') count++;
     if (_sortBy != 'default') count++;
     return count;
+  }
+
+  List<Map<String, dynamic>> get _availableCreators {
+    if (_creators.isNotEmpty) return _creators;
+    final Map<int, Map<String, dynamic>> map = {};
+    for (final l in _leads) {
+      final id = l['creator_id'] ?? l['created_by'] ?? l['employee_id'];
+      if (id != null && int.tryParse(id.toString()) != null) {
+        final intId = int.parse(id.toString());
+        String name = '';
+        if (l['creator_first'] != null && l['creator_first'].toString().trim().isNotEmpty) {
+          name = "${l['creator_first']} ${l['creator_last'] ?? ''}".trim();
+          if (l['creator_code'] != null && l['creator_code'].toString().isNotEmpty) {
+            name += " (${l['creator_code']})";
+          }
+        } else if (l['creator_username'] != null && l['creator_username'].toString().trim().isNotEmpty) {
+          name = l['creator_username'].toString();
+        }
+        if (name.isNotEmpty && !map.containsKey(intId)) {
+          map[intId] = {'id': intId, 'name': name};
+        }
+      }
+    }
+    return map.values.toList();
   }
 
   @override
@@ -64,7 +92,21 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _fetch();
+    _fetchCreators();
     _animationController.forward();
+  }
+
+  Future<void> _fetchCreators() async {
+    try {
+      final res = await ApiService().get('telecaller/creators');
+      if (mounted && res['success'] == true && res['data'] is List) {
+        setState(() {
+          _creators = List<Map<String, dynamic>>.from(res['data']);
+        });
+      }
+    } catch (e) {
+      debugPrint('telecaller_screen fetch creators error: $e');
+    }
   }
 
   @override
@@ -84,6 +126,7 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
         if (_priorityFilter.isNotEmpty) 'priority': _priorityFilter.toLowerCase(),
         if (_sourceFilter.isNotEmpty) 'source': _sourceFilter,
         if (_followUpFilter.isNotEmpty) 'follow_up_filter': _followUpFilter,
+        if (_createdByFilter != null) 'created_by': _createdByFilter,
         if (_sortBy != 'default') 'sort_by': _sortBy,
         if (_selectedDateRange != null) ...{
           'from_date': DateFormat('yyyy-MM-dd').format(_selectedDateRange!.start),
@@ -141,6 +184,8 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
       _priorityFilter = '';
       _sourceFilter = '';
       _followUpFilter = '';
+      _createdByFilter = null;
+      _createdByNameFilter = null;
       _datePreset = 'all';
       _selectedDateRange = null;
       _sortBy = 'default';
@@ -598,6 +643,8 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
     String tempPriority = _priorityFilter;
     String tempSource = _sourceFilter;
     String tempFollowUp = _followUpFilter;
+    int? tempCreatedBy = _createdByFilter;
+    String? tempCreatedByName = _createdByNameFilter;
     String tempDatePreset = _datePreset;
     DateTimeRange? tempRange = _selectedDateRange;
     String tempSort = _sortBy;
@@ -638,6 +685,8 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                             tempPriority = '';
                             tempSource = '';
                             tempFollowUp = '';
+                            tempCreatedBy = null;
+                            tempCreatedByName = null;
                             tempDatePreset = 'all';
                             tempRange = null;
                             tempSort = 'default';
@@ -779,7 +828,40 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                   ),
                   const SizedBox(height: 14),
 
-                  // 6. Sort By
+                  // 6. Created By Filter (Specific Person / Staff)
+                  const Text('CREATED BY (STAFF / SPECIFIC PERSON)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _buildFilterChip(
+                        'All Creators',
+                        tempCreatedBy == null,
+                        () => setModalState(() {
+                          tempCreatedBy = null;
+                          tempCreatedByName = null;
+                        }),
+                      ),
+                      ..._availableCreators.map((c) {
+                        final cId = int.tryParse(c['id'].toString());
+                        final cName = c['name'] ?? 'Staff #${c['id']}';
+                        final code = c['employee_code'] != null && c['employee_code'].toString().isNotEmpty ? ' (${c['employee_code']})' : '';
+                        final label = '$cName$code';
+                        return _buildFilterChip(
+                          label,
+                          tempCreatedBy == cId,
+                          () => setModalState(() {
+                            tempCreatedBy = cId;
+                            tempCreatedByName = cName;
+                          }),
+                        );
+                      }),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 7. Sort By
                   const Text('SORT BY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
                   const SizedBox(height: 6),
                   Wrap(
@@ -807,6 +889,8 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                           _priorityFilter = tempPriority;
                           _sourceFilter = tempSource;
                           _followUpFilter = tempFollowUp;
+                          _createdByFilter = tempCreatedBy;
+                          _createdByNameFilter = tempCreatedByName;
                           _datePreset = tempDatePreset;
                           _selectedDateRange = tempRange;
                           _sortBy = tempSort;
@@ -1252,7 +1336,7 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              'Filtered by: ${_followUpFilter.isNotEmpty ? 'Follow-up: $_followUpFilter • ' : ''}${_statusFilter.isNotEmpty ? 'Status: $_statusFilter • ' : ''}${_datePreset != 'all' ? 'Date: $_datePreset • ' : ''}${_searchCtrl.text.isNotEmpty ? 'Search: "${_searchCtrl.text}"' : ''}',
+              'Filtered by: ${_followUpFilter.isNotEmpty ? 'Follow-up: $_followUpFilter • ' : ''}${_createdByFilter != null ? 'Created by: ${_createdByNameFilter ?? '#$_createdByFilter'} • ' : ''}${_statusFilter.isNotEmpty ? 'Status: $_statusFilter • ' : ''}${_datePreset != 'all' ? 'Date: $_datePreset • ' : ''}${_searchCtrl.text.isNotEmpty ? 'Search: "${_searchCtrl.text}"' : ''}',
               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1E3A5F)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
