@@ -111,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       // The token may have lapsed while the app was in the background
       if (_handleExpiredSession()) return;
       _refreshAttendanceStatus();
+      _fetchDashboard();
     }
   }
 
@@ -431,14 +432,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  void _openFeature(DeptFeature feature) {
+  void _openFeature(DeptFeature feature) async {
     HapticFeedback.selectionClick();
     final screen = DeptNavHelper.buildFeatureScreen(feature);
     if (screen != null) {
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => screen),
       );
+      if (mounted) {
+        _fetchDashboard();
+      }
     } else {
       _showFeatureNotAvailable(feature);
     }
@@ -874,6 +878,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
+        if (index == 0 && _currentIndex != 0) {
+          _fetchDashboard();
+        }
         setState(() => _currentIndex = index);
         _pageController.animateToPage(
           index,
@@ -1771,6 +1778,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget _buildAnimatedStatItem(String label, String count, IconData icon, Color color) {
     final intValue = int.tryParse(count) ?? 0;
     return TweenAnimationBuilder(
+      key: ValueKey('$label-$count'),
       tween: Tween<double>(begin: 0, end: intValue.toDouble()),
       duration: const Duration(milliseconds: 800),
       builder: (context, value, child) {
