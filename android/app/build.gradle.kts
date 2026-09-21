@@ -34,6 +34,13 @@ android {
         versionName = flutter.versionName
     }
 
+    androidResources {
+        // TensorFlow Lite memory-maps the model straight out of the APK, which
+        // only works if Gradle leaves it uncompressed. Without this the model
+        // fails to load on device while working perfectly in every other test.
+        noCompress += "tflite"
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.

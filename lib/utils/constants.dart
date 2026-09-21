@@ -17,4 +17,12 @@ class AppConstants {
   static const String loginRoute = '/login';
 
   static const Duration httpTimeout = Duration(seconds: 15);
+
+  /// Uploads get longer than an ordinary call.
+  ///
+  /// Fifteen seconds is fine for a JSON request, but a check-in carries a
+  /// photo and is taken by field staff on whatever signal they happen to have.
+  /// The same limit was cutting those off mid-transfer, and the attendance was
+  /// simply lost — the employee saw "Failed to upload" and no record was made.
+  static const Duration uploadTimeout = Duration(seconds: 90);
 }

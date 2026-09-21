@@ -53,7 +53,7 @@ class _HRActivitiesScreenState extends State<HRActivitiesScreen> with SingleTick
       if (mounted && res['success'] == true) {
         setState(() => _activities = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('hr_activities_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

@@ -50,7 +50,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       if (mounted && res['success'] == true) {
         setState(() => _conversations = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('chat_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -70,7 +70,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
           _scrollToBottom();
         });
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('chat_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

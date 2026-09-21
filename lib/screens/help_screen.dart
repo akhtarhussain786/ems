@@ -52,7 +52,7 @@ class _HelpScreenState extends State<HelpScreen> with SingleTickerProviderStateM
       if (mounted && res['success'] == true) {
         setState(() => _tickets = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('help_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

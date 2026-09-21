@@ -57,7 +57,7 @@ class _ITTeamScreenState extends State<ITTeamScreen> with SingleTickerProviderSt
           _points = res['data']?['points'];
         });
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('it_team_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

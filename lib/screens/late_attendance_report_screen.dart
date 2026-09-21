@@ -498,7 +498,7 @@ class _LateAttendanceReportScreenState extends State<LateAttendanceReportScreen>
       final dt = DateTime.parse(dateStr);
       displayDate = DateFormat('dd MMM yyyy').format(dt);
       dayName = DateFormat('EEEE').format(dt);
-    } catch (_) {}
+    } catch (e) { debugPrint('late_attendance_report_screen: $e'); }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),

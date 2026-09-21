@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
+import '../utils/helpers.dart';
 
 class CampaignsScreen extends StatefulWidget {
   const CampaignsScreen({super.key});
@@ -55,7 +56,7 @@ class _CampaignsScreenState extends State<CampaignsScreen> with SingleTickerProv
       if (mounted && res['success'] == true) {
         setState(() => _campaigns = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('campaigns_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -444,9 +445,12 @@ class _CampaignsScreenState extends State<CampaignsScreen> with SingleTickerProv
     final statusColor = _statusColor(status);
     final statusIcon = _statusIcon(status);
     final statusLabel = _statusLabel(status);
-    final budget = c['budget'] ?? 0;
-    final results = c['results'] ?? 0;
-    final progress = budget > 0 ? (results / budget * 100).clamp(0, 100) : 0;
+    // Same string-from-DECIMAL problem as expenses: `budget > 0` and the
+    // division below both throw on a String, so this screen was one campaign
+    // with a budget away from the same red error box.
+    final budget = Helpers.asDouble(c['budget']);
+    final results = Helpers.asDouble(c['results']);
+    final progress = budget > 0 ? (results / budget * 100).clamp(0, 100) : 0.0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),

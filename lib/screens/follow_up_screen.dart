@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 
 class FollowUpScreen extends StatefulWidget {
@@ -55,7 +56,7 @@ class _FollowUpScreenState extends State<FollowUpScreen> with SingleTickerProvid
       if (mounted && res['success'] == true) {
         setState(() => _followUps = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('follow_up_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -535,10 +536,13 @@ class _FollowUpScreenState extends State<FollowUpScreen> with SingleTickerProvid
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      f['follow_up_date'] ?? 'N/A',
+                      f['follow_up_date'] != null && DateTime.tryParse(f['follow_up_date'].toString()) != null
+                          ? DateFormat('dd MMM yyyy (EEE)').format(DateTime.parse(f['follow_up_date'].toString()))
+                          : (f['follow_up_date'] ?? 'N/A'),
                       style: TextStyle(
                         fontSize: 11,
-                        color: isCompleted ? Colors.grey[400] : Colors.grey[500],
+                        fontWeight: FontWeight.bold,
+                        color: isCompleted ? Colors.grey[400] : const Color(0xFF1E3A5F),
                       ),
                     ),
                   ],

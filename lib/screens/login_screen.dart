@@ -5,8 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/api_service.dart';
 import '../services/fcm_service.dart';
+import '../services/onboarding_service.dart';
 import '../utils/constants.dart';
 import 'home_screen.dart';
+import 'onboarding_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -166,10 +168,30 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
 
         if (!mounted) return;
 
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+        // Check if this is the user's first login on this device
+        final currentUserId = (userData['id'] ?? userData['user_id'] ?? userData['employee_code'] ?? employeeId)?.toString();
+        final hasCompletedOnboarding = await OnboardingService.hasCompletedOnboarding(currentUserId);
+
+        if (!mounted) return;
+
+        if (!hasCompletedOnboarding) {
+          Navigator.pushReplacement(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) =>
+                  OnboardingScreen(userData: userData),
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+              transitionDuration: const Duration(milliseconds: 400),
+            ),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+        }
       } else {
         _showError(response['message'] ?? 'Invalid credentials');
       }

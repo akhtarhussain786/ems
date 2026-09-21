@@ -52,7 +52,7 @@ class _DailyWorkReportScreenState extends State<DailyWorkReportScreen> with Sing
       if (mounted && res['success'] == true) {
         setState(() => _reports = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('daily_work_report_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

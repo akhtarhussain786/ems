@@ -6,7 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import '../services/location_service.dart';
+import '../services/app_update_service.dart';
 import '../services/session_manager.dart';
+import '../widgets/update_dialog.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
 import '../utils/dept_nav_helper.dart';
@@ -55,6 +58,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+
+    // Warms a location fix in the background so tapping Check In finds one
+    // already cached instead of waiting for GPS. Passive: it asks for no
+    // permission and shows nothing.
+    LocationService.prewarm();
     WidgetsBinding.instance.addObserver(this);
     _pageController = PageController(initialPage: 0);
     _animationController = AnimationController(
@@ -82,6 +90,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _loadProfileImage();
     _startTimeUpdate();
     _animationController.forward();
+    _checkForAppUpdate();
+  }
+
+  /// Runs after the dashboard is on screen so the launch is never blocked.
+  /// A failed check is silent — the app must stay usable either way.
+  Future<void> _checkForAppUpdate() async {
+    final result = await AppUpdateService.instance.check();
+    if (result == null || !mounted) return;
+
+    // Wait for the first frame so the dialog has a laid-out route to sit on.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) UpdateDialog.show(context, result);
+    });
   }
 
   @override
@@ -90,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       // The token may have lapsed while the app was in the background
       if (_handleExpiredSession()) return;
       _refreshAttendanceStatus();
+      _fetchDashboard();
     }
   }
 
@@ -118,6 +140,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _updateTime();
       if (_isTrackingNotifier.value && _checkInTime != null) {
         _updateAttendanceDuration();
+      }
+      // Real-time quick stats auto refresh every 10 seconds
+      if (timer.tick % 10 == 0 && mounted) {
+        _fetchDashboard();
+        _fetchUnreadCount();
       }
     });
   }
@@ -263,9 +290,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       if (mounted) {
         setState(() {
           _userData = data;
-          final roleName = data['role_name'] ?? data['role'] ?? '';
-          final deptName = data['department_name'] ?? '';
-          _features = DeptNavHelper.getFeaturesForRole(roleName, deptName);
+          _features = DeptNavHelper.getFeaturesForUser(data);
         });
       }
     }
@@ -290,7 +315,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       if (mounted && res['success'] == true) {
         setState(() => _unreadCount = res['count'] ?? 0);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('home_screen: $e'); }
   }
 
   Future<void> _logout() async {
@@ -381,22 +406,48 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
     );
     if (result == true && mounted) {
-      await _fetchDashboard();
-      _checkAttendanceStatus();
-      if (!_isTrackingNotifier.value) {
+      // Reflect it straight away. The server has already accepted the punch —
+      // waiting on a dashboard round trip before the screen changed is what
+      // made a successful check-in look like nothing had happened, for as long
+      // as the connection took.
+      if (checkIn) {
+        _checkInTime = DateTime.now();
+        _isTrackingNotifier.value = true;
+        _checkInStatus = 'Working';
+        _updateAttendanceDuration();
+        _startAttendanceTimer();
+      } else {
+        _isTrackingNotifier.value = false;
+        _checkInTime = null;
+        _checkInStatus = 'Checked Out';
         _attendanceDurationNotifier.value = '00:00:00';
+        _attendanceTimer?.cancel();
       }
+
+      // Then reconcile with the server in the background. That corrects the
+      // optimistic time above to the one actually recorded, and is the only
+      // part that has to wait on the network.
+      _fetchDashboard().then((_) {
+        if (!mounted) return;
+        _checkAttendanceStatus();
+        if (!_isTrackingNotifier.value) {
+          _attendanceDurationNotifier.value = '00:00:00';
+        }
+      });
     }
   }
 
-  void _openFeature(DeptFeature feature) {
+  void _openFeature(DeptFeature feature) async {
     HapticFeedback.selectionClick();
     final screen = DeptNavHelper.buildFeatureScreen(feature);
     if (screen != null) {
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => screen),
       );
+      if (mounted) {
+        _fetchDashboard();
+      }
     } else {
       _showFeatureNotAvailable(feature);
     }
@@ -832,6 +883,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
+        if (index == 0 && _currentIndex != 0) {
+          _fetchDashboard();
+        }
         setState(() => _currentIndex = index);
         _pageController.animateToPage(
           index,
@@ -932,11 +986,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   if (_dashboardData?['leave_pending'] != null)
                     _buildLeaveStatusCard(_dashboardData!),
                   const SizedBox(height: 12),
-                  if (_dashboardData?['total_leads'] != null)
-                    _buildRoleStats(_dashboardData!, ['total_leads', 'today_leads', 'monthly_leads', 'converted_leads'], ['Total', 'Today', 'Monthly', 'Won'], [Colors.blue, Colors.orange, Colors.purple, Colors.green]),
-                  const SizedBox(height: 12),
                   if (_dashboardData?['assigned_leads'] != null)
-                    _buildRoleStats(_dashboardData!, ['assigned_leads', 'today_calls', 'pending_followups', 'converted_leads'], ['Assigned', "Today's Calls", 'Pending', 'Converted'], [Colors.blue, Colors.orange, Colors.red, Colors.green]),
+                    _buildRoleStats(_dashboardData!, ['assigned_leads', 'today_calls', 'pending_followups', 'converted_leads'], ['Assigned', "Today's Calls", 'Pending', 'Converted'], [Colors.blue, Colors.orange, Colors.red, Colors.green])
+                  else if (_dashboardData?['total_leads'] != null)
+                    _buildRoleStats(_dashboardData!, ['total_leads', 'today_leads', 'monthly_leads', 'converted_leads'], ['Total', 'Today', 'Monthly', 'Won'], [Colors.blue, Colors.orange, Colors.purple, Colors.green]),
                   const SizedBox(height: 12),
                   if (_dashboardData?['pending_leaves'] != null)
                     _buildLeavePendingCard(_dashboardData!['pending_leaves']),
@@ -1729,6 +1782,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget _buildAnimatedStatItem(String label, String count, IconData icon, Color color) {
     final intValue = int.tryParse(count) ?? 0;
     return TweenAnimationBuilder(
+      key: ValueKey('$label-$count'),
       tween: Tween<double>(begin: 0, end: intValue.toDouble()),
       duration: const Duration(milliseconds: 800),
       builder: (context, value, child) {

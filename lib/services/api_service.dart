@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../utils/constants.dart';
+import 'device_identity.dart';
 import 'session_manager.dart';
 
 class ApiService {
@@ -193,11 +194,17 @@ class ApiService {
   // ============================================================
   // ✅ MULTIPART REQUEST with session validation
   // ============================================================
+  /// Posts a multipart form.
+  ///
+  /// [extraFiles] carries any further files as fieldName -> file, for the
+  /// endpoints that take more than one — a duty start sends both a selfie and
+  /// an odometer photo. Omitting it behaves exactly as before.
   Future<Map<String, dynamic>> postMultipart(
       String endpoint,
       Map<String, String> fields,
       File? file, {
         String fileField = 'photo',
+        Map<String, File>? extraFiles,
       }) async {
     final token = await _requireValidToken();
 
@@ -216,11 +223,18 @@ class ApiService {
     if (file != null && await file.exists()) {
       request.files.add(await http.MultipartFile.fromPath(fileField, file.path));
     }
+    for (final entry in (extraFiles ?? const <String, File>{}).entries) {
+      if (await entry.value.exists()) {
+        request.files.add(
+          await http.MultipartFile.fromPath(entry.key, entry.value.path),
+        );
+      }
+    }
 
     print('🟢 Multipart URL: ${request.url}');
 
     try {
-      var streamedResponse = await request.send().timeout(AppConstants.httpTimeout);
+      var streamedResponse = await request.send().timeout(AppConstants.uploadTimeout);
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 302 || response.statusCode == 301) {
@@ -238,9 +252,18 @@ class ApiService {
               await http.MultipartFile.fromPath(fileField, file.path),
             );
           }
+          // The redirect rebuilds the request, so the extra files have to be
+          // attached again or they are silently dropped on the second hop.
+          for (final entry in (extraFiles ?? const <String, File>{}).entries) {
+            if (await entry.value.exists()) {
+              redirectRequest.files.add(
+                await http.MultipartFile.fromPath(entry.key, entry.value.path),
+              );
+            }
+          }
 
           final redirectResponse = await redirectRequest.send().timeout(
-            AppConstants.httpTimeout,
+            AppConstants.uploadTimeout,
           );
           response = await http.Response.fromStream(redirectResponse);
         }
@@ -278,7 +301,7 @@ class ApiService {
         uri,
         headers: _headers(token: token),
         body: jsonEncode(requestData),
-      ).timeout(AppConstants.httpTimeout);
+      ).timeout(AppConstants.uploadTimeout);
 
       if (response.statusCode == 302 || response.statusCode == 301) {
         final location = response.headers['location'];
@@ -288,7 +311,7 @@ class ApiService {
             Uri.parse(location),
             headers: _headers(token: token),
             body: jsonEncode(requestData),
-          ).timeout(AppConstants.httpTimeout);
+          ).timeout(AppConstants.uploadTimeout);
         }
       }
 
@@ -308,10 +331,14 @@ class ApiService {
   // ============================================================
   Future<Map<String, dynamic>> login(String employeeId, String password, {bool remember = false}) async {
     try {
+      // Sent so the server can tie this account to one handset — a shared
+      // password is not enough to sign in on a different phone.
       final response = await post('auth/login', {
         'employee_id': employeeId,
         'password': password,
         'remember': remember,
+        'device_id': await DeviceIdentity.instance.id(),
+        'device_name': await DeviceIdentity.instance.name(),
       }, auth: false);
 
       if (response['success'] == true) {
@@ -354,22 +381,33 @@ class ApiService {
       double lng,
       String address,
       File? photo,
-      String? photoBase64,
-      ) async {
+      String? photoBase64, {
+        List<double>? faceEmbedding,
+      }) async {
     final fields = {
       'latitude': lat.toString(),
       'longitude': lng.toString(),
       'address': address,
     };
-    if (photoBase64 != null) fields['photo_base64'] = photoBase64;
+    if (faceEmbedding != null) fields['face_embedding'] = jsonEncode(faceEmbedding);
+
+    // Send the photo one way or the other, never both. It used to go as a
+    // multipart file *and* as base64 in the same request — the same image
+    // twice, the base64 copy a third larger again — and the server reads the
+    // base64 first and returns, so the file was uploaded then discarded
+    // unread. On a field connection those wasted bytes were the difference
+    // between a check-in landing and timing out.
     if (photo != null && await photo.exists()) {
       return postMultipart('attendance/checkin', fields, photo);
     }
+
+    // No file on disk: fall back to sending it inline as JSON.
     return post('attendance/checkin', {
       'latitude': lat,
       'longitude': lng,
       'address': address,
       'photo_base64': photoBase64,
+      if (faceEmbedding != null) 'face_embedding': faceEmbedding,
     });
   }
 
@@ -378,21 +416,32 @@ class ApiService {
       double lng,
       String address,
       File? photo,
-      String? photoBase64,
-      ) async {
+      String? photoBase64, {
+        List<double>? faceEmbedding,
+      }) async {
     final fields = {
       'latitude': lat.toString(),
       'longitude': lng.toString(),
       'address': address,
     };
-    if (photoBase64 != null) fields['photo_base64'] = photoBase64;
+    if (faceEmbedding != null) fields['face_embedding'] = jsonEncode(faceEmbedding);
+
+    // Send the photo one way or the other, never both. It used to go as a
+    // multipart file *and* as base64 in the same request — the same image
+    // twice, the base64 copy a third larger again — and the server reads the
+    // base64 first and returns, so the file was uploaded then discarded
+    // unread. On a field connection those wasted bytes were the difference
+    // between a check-in landing and timing out.
     if (photo != null && await photo.exists()) {
       return postMultipart('attendance/checkout', fields, photo);
     }
+
+    // No file on disk: fall back to sending it inline as JSON.
     return post('attendance/checkout', {
       'latitude': lat,
       'longitude': lng,
       'address': address,
+      if (faceEmbedding != null) 'face_embedding': faceEmbedding,
       'photo_base64': photoBase64,
     });
   }
@@ -659,6 +708,32 @@ class ApiService {
   // ============================================================
   Future<Map<String, dynamic>> updateFcmToken(String token) async {
     return post('notifications/update_fcm_token', {'fcm_token': token});
+  }
+
+  // ============================================================
+  // FACE REGISTRATION
+  // ============================================================
+
+  /// Whether this employee has registered a face, and whether one is required.
+  Future<Map<String, dynamic>> getFaceStatus() async {
+    return get('face/status');
+  }
+
+  /// Registers the face. The server refuses a second attempt, so this succeeds
+  /// exactly once until a super admin clears it.
+  Future<Map<String, dynamic>> enrollFace(
+      List<double> embedding, String modelVersion) async {
+    return post('face/enroll', {
+      'embedding': embedding,
+      'model_version': modelVersion,
+    });
+  }
+
+  // ============================================================
+  // ✅ EXCEL / CSV REPORT EXPORTS
+  // ============================================================
+  Future<Map<String, dynamic>> exportReportData(Map<String, dynamic> data) async {
+    return post('reports/export_data', data);
   }
 }
 

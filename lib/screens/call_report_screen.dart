@@ -54,7 +54,7 @@ class _CallReportScreenState extends State<CallReportScreen> with SingleTickerPr
       if (mounted && res['success'] == true) {
         setState(() => _calls = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('call_report_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

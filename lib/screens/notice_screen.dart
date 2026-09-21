@@ -45,7 +45,7 @@ class _NoticeScreenState extends State<NoticeScreen> with SingleTickerProviderSt
       if (mounted && res['success'] == true) {
         setState(() => _notices = res['data'] ?? []);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('notice_screen: $e'); }
     if (mounted) setState(() => _loading = false);
   }
 

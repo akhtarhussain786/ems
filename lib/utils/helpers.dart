@@ -1,6 +1,28 @@
 import 'package:intl/intl.dart';
 
 class Helpers {
+  /// Reads a number that arrived from the API.
+  ///
+  /// MySQL returns DECIMAL columns as strings, and PHP's json_encode passes
+  /// them through as JSON strings — so `amount` arrives as "10000.00", not
+  /// 10000.0. Calling a num method on that throws NoSuchMethodError at build
+  /// time and takes the whole screen down with a red error box.
+  ///
+  /// Anything unreadable, including null, counts as zero: a missing figure
+  /// should render as 0 rather than crash the page it appears on.
+  static num asNum(dynamic value) {
+    if (value is num) return value;
+    if (value is String) return num.tryParse(value.trim()) ?? 0;
+    return 0;
+  }
+
+  /// The same value as a double, for arithmetic and toStringAsFixed.
+  static double asDouble(dynamic value) => asNum(value).toDouble();
+
+  /// The same value as an int, for counts and kilometre readings.
+  static int asInt(dynamic value) => asNum(value).round();
+
+
   static String formatTime(String? dateTime) {
     if (dateTime == null) return '--:--';
     try {
