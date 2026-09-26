@@ -216,19 +216,33 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
     final employee = s['employee'] ?? {};
     final salary = s['salary'] ?? {};
 
-    // FIXED: Safe extraction of values with proper type conversion
+    // Safe extraction of values with proper type conversion
     final basicSalary = _toDouble(salary['basic_salary']);
-    final presentDays = _toInt(salary['present_days']);
-    final paidLeaveDays = _toInt(salary['paid_leave_days']);
-    final earnedLeaveDays = _toInt(salary['earned_leave_days']);
-    final totalEarnings = _toDouble(salary['total_earnings']);
-    final unpaidLeaveDays = _toInt(salary['unpaid_leave_days']);
-    final absentDays = _toInt(salary['absent_days']);
-    final halfDays = _toInt(salary['half_days']);
-    final lateDays = _toInt(salary['late_days']);
+    final baseEarnedSalary = _toDouble(salary['base_earned_salary']);
+    final bonusAmount = _toDouble(salary['bonus_amount']);
+    final allowances = _toDouble(salary['total_earnings']);
+    final grossEarnings = (baseEarnedSalary > 0 ? baseEarnedSalary : basicSalary) + (allowances > 0 ? allowances : bonusAmount);
+
+    final presentDays = _toDouble(salary['present_days']);
+    final paidLeaveDays = _toDouble(salary['paid_leave_days']);
+    final earnedLeaveDays = _toDouble(salary['earned_leave_days']);
+    final weeklyOffDays = _toDouble(salary['weekly_off_days']);
+    final holidayDays = _toDouble(salary['holiday_days']);
+
+    final unpaidLeaveDays = _toDouble(salary['unpaid_leave_days']);
+    final absentDays = _toDouble(salary['absent_days']);
+    final halfDays = _toDouble(salary['half_days']);
+    final lateDays = _toDouble(salary['late_days']);
+    final attendanceDeduction = _toDouble(salary['attendance_deduction']);
     final otherDeductions = _toDouble(salary['other_deductions']);
     final totalDeductions = _toDouble(salary['total_deductions']);
-    final netSalary = _toDouble(salary['net_salary']);
+
+    final currentNetSalary = _toDouble(salary['current_net_salary'] ?? salary['net_salary']);
+    final previousDue = _toDouble(salary['previous_due']);
+    final totalPayable = _toDouble(salary['total_payable'] ?? currentNetSalary);
+    final paidAmount = _toDouble(salary['paid_amount']);
+    final remainingDue = _toDouble(salary['remaining_due'] ?? (totalPayable - paidAmount));
+    final netSalary = totalPayable > 0 ? totalPayable : currentNetSalary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,12 +251,12 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
         Center(
           child: Column(
             children: [
-              Text(
+              const Text(
                 'YATHARTH INSTITUTION',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF1E3A5F),
+                  color: Color(0xFF1E3A5F),
                 ),
               ),
               Text(
@@ -300,11 +314,18 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
               ),
               const Divider(color: Colors.green),
               _amountRow('Basic Salary', basicSalary),
+              if (allowances > 0 || bonusAmount > 0)
+                _amountRow('Allowances / Bonus', allowances > 0 ? allowances : bonusAmount),
               _amountRow('Present Days', presentDays, isDays: true),
               _amountRow('Paid Leave', paidLeaveDays, isDays: true),
-              _amountRow('Earned Leave', earnedLeaveDays, isDays: true),
+              if (earnedLeaveDays > 0)
+                _amountRow('Earned Leave', earnedLeaveDays, isDays: true),
+              if (weeklyOffDays > 0)
+                _amountRow('Weekly Off', weeklyOffDays, isDays: true),
+              if (holidayDays > 0)
+                _amountRow('Holidays', holidayDays, isDays: true),
               const Divider(color: Colors.green),
-              _amountRow('Total Earnings', totalEarnings, isTotal: true, color: Colors.green),
+              _amountRow('Total Gross Earnings', grossEarnings, isTotal: true, color: Colors.green[800]),
             ],
           ),
         ),
@@ -339,15 +360,42 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
               _amountRow('Absent Days', absentDays, isDays: true),
               _amountRow('Half Days', halfDays, isDays: true),
               _amountRow('Late Days', lateDays, isDays: true),
-              _amountRow('Other Deductions', otherDeductions),
+              if (attendanceDeduction > 0)
+                _amountRow('Attendance Deduction', attendanceDeduction),
+              if (otherDeductions > 0)
+                _amountRow('Other Deductions', otherDeductions),
               const Divider(color: Colors.red),
-              _amountRow('Total Deductions', totalDeductions, isTotal: true, color: Colors.red),
+              _amountRow('Total Deductions', totalDeductions, isTotal: true, color: Colors.red[800]),
             ],
           ),
         ),
         const SizedBox(height: 16),
 
-        // Net Payable
+        // Net & Ledger Summary
+        if (previousDue > 0 || paidAmount > 0) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue[200]!),
+            ),
+            child: Column(
+              children: [
+                _amountRow('Current Month Net', currentNetSalary),
+                if (previousDue > 0)
+                  _amountRow('Previous Due (Carry Forward)', previousDue, color: Colors.red[700]),
+                if (paidAmount > 0)
+                  _amountRow('Amount Paid', paidAmount, color: Colors.green[700]),
+                if (remainingDue > 0 && previousDue > 0)
+                  _amountRow('Remaining Outstanding Due', remainingDue, isTotal: true, color: Colors.red[800]),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Net Payable Banner
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -359,11 +407,11 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'NET PAYABLE',
-                style: TextStyle(
+              Text(
+                previousDue > 0 ? 'TOTAL PAYABLE' : 'NET PAYABLE',
+                style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.bold,
                 ),
               ),
