@@ -739,6 +739,18 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
         } catch (_) {}
       }
 
+      // Load month-wise history for full dues & paid breakdown in PDF
+      List<dynamic> allMonthsHistory = [];
+      try {
+        final empId = _toInt(employee['id']);
+        if (empId > 0) {
+          final ledgerRes = await ApiService().post('salary/ledger', {'employee_id': empId});
+          if (ledgerRes['success'] == true && ledgerRes['data'] != null) {
+            allMonthsHistory = (ledgerRes['data']['months'] as List<dynamic>?) ?? [];
+          }
+        }
+      } catch (_) {}
+
       final navyColor = PdfColor.fromHex('1E3A5F');
       final darkNavy = PdfColor.fromHex('0B2545');
       final lightBg = PdfColor.fromHex('F8FAFC');
@@ -1035,7 +1047,7 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
 
                         // 6. Net Payable Banner
                         pw.Container(
-                          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: pw.BoxDecoration(
                             color: darkNavy,
                             borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
@@ -1047,7 +1059,7 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                                 children: [
                                   pw.Text(
-                                    previousDue > 0 ? 'TOTAL PAYABLE (INCL. PREV DUE)' : 'NET SALARY PAYABLE',
+                                    previousDue > 0 ? 'TOTAL PAYABLE (INCL. PREVIOUS DUES)' : 'NET SALARY PAYABLE',
                                     style: pw.TextStyle(
                                       fontWeight: pw.FontWeight.bold,
                                       fontSize: 10,
@@ -1067,16 +1079,98 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                                 _formatCurrency(finalNet),
                                 style: pw.TextStyle(
                                   fontWeight: pw.FontWeight.bold,
-                                  fontSize: 16,
+                                  fontSize: 15,
                                   color: PdfColors.white,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        pw.SizedBox(height: 35),
+                        pw.SizedBox(height: 10),
 
-                        // 7. Signatures Area
+                        // 7. Month-Wise Salary Statement (Paid & Dues Breakdown)
+                        if (allMonthsHistory.isNotEmpty) ...[
+                          pw.Container(
+                            decoration: pw.BoxDecoration(
+                              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                              border: pw.Border.all(color: borderGrey),
+                            ),
+                            child: pw.Column(
+                              children: [
+                                pw.Container(
+                                  padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                  decoration: pw.BoxDecoration(
+                                    color: lightBg,
+                                    borderRadius: const pw.BorderRadius.vertical(top: pw.Radius.circular(5)),
+                                  ),
+                                  child: pw.Row(
+                                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      pw.Text('MONTHLY STATEMENT', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
+                                      pw.Text('SALARY', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
+                                      pw.Text('PAID', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
+                                      pw.Text('BALANCE DUES', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
+                                      pw.Text('STATUS', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
+                                    ],
+                                  ),
+                                ),
+                                pw.Divider(color: borderGrey, height: 1, thickness: 0.8),
+                                ...allMonthsHistory.map((m) {
+                                  final mTitle = m['month_name'] ?? m['month_year'] ?? '';
+                                  final mNet = _toDouble(m['net_salary']);
+                                  final mPaid = _toDouble(m['paid_amount']);
+                                  final mDue = _toDouble(m['remaining_due']);
+                                  final mStatus = (m['payment_status'] ?? '').toString().toLowerCase();
+                                  final isMpaid = mStatus == 'paid' || (mPaid >= mNet && mNet > 0);
+                                  final statusText = isMpaid ? 'PAID' : (mPaid > 0 ? 'PARTIAL' : 'DUES / BAKI');
+                                  final statusClr = isMpaid ? greenText : (mPaid > 0 ? PdfColors.orange800 : redText);
+
+                                  return pw.Container(
+                                    padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: pw.BoxDecoration(
+                                      color: isMpaid ? PdfColors.white : (mDue > 0 ? redBg : PdfColors.white),
+                                      border: const pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200, width: 0.5)),
+                                    ),
+                                    child: pw.Row(
+                                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        pw.SizedBox(
+                                          width: 100,
+                                          child: pw.Text(mTitle, style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+                                        ),
+                                        pw.SizedBox(
+                                          width: 70,
+                                          child: pw.Text(_formatCurrency(mNet), style: const pw.TextStyle(fontSize: 8)),
+                                        ),
+                                        pw.SizedBox(
+                                          width: 70,
+                                          child: pw.Text(_formatCurrency(mPaid), style: pw.TextStyle(fontSize: 8, color: mPaid > 0 ? greenText : PdfColors.grey700)),
+                                        ),
+                                        pw.SizedBox(
+                                          width: 75,
+                                          child: pw.Text(_formatCurrency(mDue), style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: mDue > 0 ? redText : greenText)),
+                                        ),
+                                        pw.Container(
+                                          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                          decoration: pw.BoxDecoration(
+                                            color: isMpaid ? greenBg : (mDue > 0 ? redBg : PdfColors.grey100),
+                                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
+                                          ),
+                                          child: pw.Text(statusText, style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold, color: statusClr)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ],
+                            ),
+                          ),
+                          pw.SizedBox(height: 18),
+                        ] else ...[
+                          pw.SizedBox(height: 25),
+                        ],
+
+                        // 8. Signatures Area
                         pw.Row(
                           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: pw.CrossAxisAlignment.end,
