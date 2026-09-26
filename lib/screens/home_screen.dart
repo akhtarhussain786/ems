@@ -267,6 +267,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         localPath: _profileImagePath,
       );
 
+  bool get _isTelecaller {
+    final role = (_userData?['role_name'] ?? _userData?['role'] ?? _dashboardData?['employee']?['role_name'] ?? _dashboardData?['employee']?['role'] ?? '').toString().toLowerCase();
+    final dept = (_userData?['department_name'] ?? _dashboardData?['employee']?['department_name'] ?? '').toString().toLowerCase();
+    return role.contains('telecaller') || dept.contains('telecaller');
+  }
+
   Future<void> _loadProfileImage() async {
     final prefs = await SharedPreferences.getInstance();
     final imagePath = prefs.getString('profile_image_path');
@@ -986,10 +992,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   if (_dashboardData?['leave_pending'] != null)
                     _buildLeaveStatusCard(_dashboardData!),
                   const SizedBox(height: 12),
-                  if (_dashboardData?['assigned_leads'] != null)
-                    _buildRoleStats(_dashboardData!, ['assigned_leads', 'today_calls', 'pending_followups', 'converted_leads'], ['Assigned', "Today's Calls", 'Pending', 'Converted'], [Colors.blue, Colors.orange, Colors.red, Colors.green])
-                  else if (_dashboardData?['total_leads'] != null)
-                    _buildRoleStats(_dashboardData!, ['total_leads', 'today_leads', 'monthly_leads', 'converted_leads'], ['Total', 'Today', 'Monthly', 'Won'], [Colors.blue, Colors.orange, Colors.purple, Colors.green]),
+                  if (_isTelecaller && _dashboardData?['assigned_leads'] != null)
+                    _buildRoleStats(_dashboardData!, ['assigned_leads', 'today_calls', 'pending_followups', 'converted_leads'], ['Assigned', "Today's Calls", 'Pending', 'Converted'], [Colors.blue, Colors.orange, Colors.red, Colors.green]),
                   const SizedBox(height: 12),
                   if (_dashboardData?['pending_leaves'] != null)
                     _buildLeavePendingCard(_dashboardData!['pending_leaves']),
