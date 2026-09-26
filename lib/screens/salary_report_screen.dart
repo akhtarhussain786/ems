@@ -1819,11 +1819,10 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
           ),
           const SizedBox(height: 8),
 
-          // Action Buttons (View Slip, Record Payment, Payment History)
+          // Action Buttons (View Slip & Payment History)
           Row(
             children: [
               Expanded(
-                flex: 3,
                 child: ElevatedButton.icon(
                   onPressed: () => _fetchSalarySlip(_toInt(employee['id'])),
                   icon: _loadingSlip
@@ -1834,7 +1833,7 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                         )
                       : const Icon(Icons.remove_red_eye_rounded, size: 16),
                   label: Text(
-                    _loadingSlip ? 'Loading...' : 'Salary Slip',
+                    _loadingSlip ? 'Loading...' : 'View Salary Slip',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -1843,7 +1842,7 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1E3A5F),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     shape: const RoundedRectangleBorder(
                       borderRadius: BorderRadius.all(Radius.circular(10)),
                     ),
@@ -1851,32 +1850,6 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                   ),
                 ),
               ),
-              if (remainingDue > 0) ...[
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 3,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showRecordPaymentDialog(s),
-                    icon: const Icon(Icons.payment_rounded, size: 16),
-                    label: const Text(
-                      'Pay Now',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[700],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 9),
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(10)),
-                      ),
-                      elevation: 0,
-                    ),
-                  ),
-                ),
-              ],
               if ((s['payments'] is List && (s['payments'] as List).isNotEmpty) || paidAmount > 0) ...[
                 const SizedBox(width: 8),
                 IconButton(
@@ -1886,7 +1859,7 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                   color: const Color(0xFF1E3A5F),
                   style: IconButton.styleFrom(
                     backgroundColor: const Color(0xFF1E3A5F).withOpacity(0.08),
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(10),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
@@ -1894,338 +1867,6 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  void _showRecordPaymentDialog(Map<String, dynamic> item) {
-    final employee = item['employee'] ?? {};
-    final salary = item['salary'] ?? {};
-    final empId = _toInt(employee['id']);
-    final payrollId = _toInt(salary['payroll_id']);
-    final empName = employee['name'] ?? 'Employee';
-    final currentNet = _toDouble(salary['current_net_salary'] ?? salary['net_salary']);
-    final totalPayable = _toDouble(salary['total_payable'] ?? currentNet);
-    final paidAmount = _toDouble(salary['paid_amount']);
-    final remainingDue = _toDouble(salary['remaining_due'] ?? (totalPayable - paidAmount));
-    final defaultAmount = remainingDue > 0 ? remainingDue : totalPayable;
-
-    final amountController = TextEditingController(
-      text: defaultAmount > 0 ? (defaultAmount % 1 == 0 ? defaultAmount.toInt().toString() : defaultAmount.toStringAsFixed(2)) : '',
-    );
-    final refController = TextEditingController();
-    final notesController = TextEditingController();
-    DateTime selectedDate = DateTime.now();
-    String selectedMethod = 'bank_transfer';
-    bool isSubmitting = false;
-
-    final methods = [
-      {'key': 'bank_transfer', 'label': 'Bank Transfer (NEFT/RTGS/IMPS)'},
-      {'key': 'upi', 'label': 'UPI / Online'},
-      {'key': 'cash', 'label': 'Cash'},
-      {'key': 'cheque', 'label': 'Cheque'},
-    ];
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Dialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.green[50],
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(Icons.attach_money_rounded, color: Colors.green[700], size: 22),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Record Salary Payment',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E3A5F),
-                              ),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 20, color: Colors.grey),
-                          onPressed: isSubmitting ? null : () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                    const Divider(),
-                    const SizedBox(height: 8),
-
-                    // Outstanding Summary Box
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.blue[100]!),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            empName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E3A5F)),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Text('Total Outstanding Due: ', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
-                              Text(
-                                '₹ ${NumberFormat('#,##0.00').format(remainingDue > 0 ? remainingDue : totalPayable)}',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.red[700]),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Payment Amount Input
-                    const Text('Payment Amount (₹) *', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: amountController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        hintText: 'Enter payment amount',
-                        prefixText: '₹ ',
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4, left: 2),
-                      child: Text(
-                        'Enter full or partial payment amount. Oldest unpaid balances will be cleared first (FIFO).',
-                        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Payment Date & Payment Method Row
-                    Row(
-                      children: [
-                        // Payment Date Picker
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Payment Date', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                              const SizedBox(height: 6),
-                              InkWell(
-                                onTap: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: selectedDate,
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime.now().add(const Duration(days: 30)),
-                                  );
-                                  if (picked != null) {
-                                    setDialogState(() => selectedDate = picked);
-                                  }
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.grey[400]!),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        DateFormat('dd / MM / yyyy').format(selectedDate),
-                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                                      ),
-                                      const Icon(Icons.calendar_today_rounded, size: 16, color: Colors.grey),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Payment Method Dropdown
-                    const Text('Payment Method', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey[400]!),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: selectedMethod,
-                          isExpanded: true,
-                          style: const TextStyle(fontSize: 12, color: Colors.black),
-                          items: methods.map((m) {
-                            return DropdownMenuItem<String>(
-                              value: m['key'],
-                              child: Text(m['label']!),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) setDialogState(() => selectedMethod = val);
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Reference Number
-                    const Text('Transaction / Reference Number', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: refController,
-                      decoration: InputDecoration(
-                        hintText: 'e.g. UTR / Cheque / Txn ID',
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Notes
-                    const Text('Payment Notes / Remarks', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: notesController,
-                      maxLines: 2,
-                      decoration: InputDecoration(
-                        hintText: 'Optional notes...',
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Action Buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: isSubmitting ? null : () => Navigator.pop(context),
-                          child: Text('Cancel', style: TextStyle(color: Colors.grey[700])),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          onPressed: isSubmitting
-                              ? null
-                              : () async {
-                                  final amt = double.tryParse(amountController.text.trim()) ?? 0;
-                                  if (amt <= 0) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Please enter a valid payment amount.'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                    return;
-                                  }
-
-                                  setDialogState(() => isSubmitting = true);
-                                  try {
-                                    final res = await ApiService().post('salary/pay', {
-                                      'employee_id': empId,
-                                      'payroll_id': payrollId > 0 ? payrollId : null,
-                                      'amount': amt,
-                                      'payment_date': DateFormat('yyyy-MM-dd').format(selectedDate),
-                                      'payment_method': selectedMethod,
-                                      'reference_no': refController.text.trim(),
-                                      'notes': notesController.text.trim(),
-                                    });
-
-                                    if (mounted) {
-                                      if (res['success'] == true) {
-                                        Navigator.pop(context);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Row(
-                                              children: [
-                                                const Icon(Icons.check_circle_rounded, color: Colors.white),
-                                                const SizedBox(width: 8),
-                                                Text('✅ Payment of ₹${NumberFormat('#,##0.00').format(amt)} recorded successfully!'),
-                                              ],
-                                            ),
-                                            backgroundColor: Colors.green[700],
-                                            behavior: SnackBarBehavior.floating,
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                          ),
-                                        );
-                                        _fetchSalaryData();
-                                      } else {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(res['message'] ?? 'Failed to record payment'),
-                                            backgroundColor: Colors.red,
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  } catch (e) {
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-                                      );
-                                    }
-                                  } finally {
-                                    setDialogState(() => isSubmitting = false);
-                                  }
-                                },
-                          icon: isSubmitting
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.check_circle_rounded, size: 16),
-                          label: Text(isSubmitting ? 'Saving...' : 'Confirm Payment'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green[700],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
       ),
     );
   }
