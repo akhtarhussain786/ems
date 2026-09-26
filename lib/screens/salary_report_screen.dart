@@ -883,6 +883,10 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                                     _pdfKeyValue('Employee Code', empCode),
                                     pw.SizedBox(height: 4),
                                     _pdfKeyValue('Department', empDept),
+                                    if (employee['joining_date'] != null && employee['joining_date'].toString().isNotEmpty) ...[
+                                      pw.SizedBox(height: 4),
+                                      _pdfKeyValue('Joining Date', employee['joining_date'].toString()),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -958,6 +962,8 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                                       child: pw.Column(
                                         children: [
                                           _pdfAmountRow('Basic Salary', _formatCurrency(basicSalary)),
+                                          if (baseEarnedSalary > 0 && baseEarnedSalary != basicSalary)
+                                            _pdfAmountRow('Base Prorated Salary', _formatCurrency(baseEarnedSalary), textColor: navyColor),
                                           if (allowances > 0)
                                             _pdfAmountRow('Allowances / Bonus', _formatCurrency(allowances)),
                                           _pdfAmountRow('Present Days Earned', '${presentDays.toStringAsFixed(presentDays % 1 == 0 ? 0 : 1)} Days'),
@@ -1109,7 +1115,7 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                                       pw.Text('MONTHLY STATEMENT', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
                                       pw.Text('SALARY', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
                                       pw.Text('PAID', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
-                                      pw.Text('BALANCE DUES', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
+                                      pw.Text('MONTH DUE', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
                                       pw.Text('STATUS', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: darkNavy)),
                                     ],
                                   ),
@@ -1119,7 +1125,7 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                                   final mTitle = m['month_name'] ?? m['month_year'] ?? '';
                                   final mNet = _toDouble(m['net_salary']);
                                   final mPaid = _toDouble(m['paid_amount']);
-                                  final mDue = _toDouble(m['remaining_due']);
+                                  final mDue = _toDouble(m['month_due'] ?? m['remaining_due'] ?? (mNet - mPaid));
                                   final mStatus = (m['payment_status'] ?? '').toString().toLowerCase();
                                   final isMpaid = mStatus == 'paid' || (mPaid >= mNet && mNet > 0);
                                   final statusText = isMpaid ? 'PAID' : (mPaid > 0 ? 'PARTIAL' : 'DUES / BAKI');
