@@ -508,6 +508,52 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
     );
   }
 
+  String _formatCurrency(double amount) {
+    return 'Rs. ${NumberFormat('#,##0.00').format(amount)}';
+  }
+
+  String _numberToWordsIndian(double number) {
+    int n = number.round();
+    if (n <= 0) return 'Zero Rupees Only';
+
+    final units = [
+      '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+      'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'
+    ];
+    final tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    String convertLessThanOneThousand(int num) {
+      String current = '';
+      if (num % 100 < 20) {
+        current = units[num % 100];
+        num = num ~/ 100;
+      } else {
+        current = units[num % 10];
+        num = num ~/ 10;
+        current = '${tens[num % 10]} $current'.trim();
+        num = num ~/ 10;
+      }
+      if (num == 0) return current;
+      return '${units[num]} Hundred $current'.trim();
+    }
+
+    String result = '';
+    int crore = n ~/ 10000000;
+    n %= 10000000;
+    int lakh = n ~/ 100000;
+    n %= 100000;
+    int thousand = n ~/ 1000;
+    n %= 1000;
+    int remainder = n;
+
+    if (crore > 0) result += '${convertLessThanOneThousand(crore)} Crore ';
+    if (lakh > 0) result += '${convertLessThanOneThousand(lakh)} Lakh ';
+    if (thousand > 0) result += '${convertLessThanOneThousand(thousand)} Thousand ';
+    if (remainder > 0) result += convertLessThanOneThousand(remainder);
+
+    return '${result.trim()} Rupees Only';
+  }
+
   Future<void> _downloadPDF() async {
     if (_salarySlip == null) return;
     setState(() => _generatingPdf = true);
@@ -518,187 +564,446 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
       final salary = s['salary'] ?? {};
 
       final empName = employee['name'] ?? 'Employee';
-      final empCode = employee['code'] ?? '';
-      final empDept = employee['department'] ?? '';
-      final empDesg = employee['designation'] ?? '';
+      final empCode = employee['code'] ?? '-';
+      final empDept = employee['department'] ?? '-';
+      final empDesg = employee['designation'] ?? '-';
 
       final basicSalary = _toDouble(salary['basic_salary']);
+      final baseEarnedSalary = _toDouble(salary['base_earned_salary']);
       final presentDays = _toDouble(salary['present_days']);
       final paidLeave = _toDouble(salary['paid_leave_days']);
       final earnedLeave = _toDouble(salary['earned_leave_days']);
       final weeklyOff = _toDouble(salary['weekly_off_days']);
       final holidays = _toDouble(salary['holiday_days']);
       final allowances = _toDouble(salary['total_earnings'] ?? salary['bonus_amount']);
-      final grossEarnings = basicSalary + allowances;
+      final grossEarnings = (baseEarnedSalary > 0 ? baseEarnedSalary : basicSalary) + allowances;
 
       final unpaidLeave = _toDouble(salary['unpaid_leave_days']);
       final absentDays = _toDouble(salary['absent_days']);
       final halfDays = _toDouble(salary['half_days']);
       final lateDays = _toDouble(salary['late_days']);
+      final attendanceDeduction = _toDouble(salary['attendance_deduction']);
+      final otherDeductions = _toDouble(salary['other_deductions']);
       final totalDeductions = _toDouble(salary['total_deductions']);
 
       final currentNet = _toDouble(salary['current_net_salary'] ?? salary['net_salary']);
       final previousDue = _toDouble(salary['previous_due']);
       final totalPayable = _toDouble(salary['total_payable'] ?? currentNet);
       final paidAmount = _toDouble(salary['paid_amount']);
-      final remainingDue = _toDouble(salary['remaining_due']);
+      final remainingDue = _toDouble(salary['remaining_due'] ?? (totalPayable - paidAmount));
       final finalNet = totalPayable > 0 ? totalPayable : currentNet;
+      final paymentStatus = (salary['payment_status'] ?? (remainingDue <= 0 && paidAmount > 0 ? 'paid' : (paidAmount > 0 ? 'partially_paid' : 'unpaid'))).toString().toUpperCase();
+
+      // Format month name nicely (e.g. September 2026)
+      String monthDisplay = _selectedMonth;
+      try {
+        final parsedDate = DateTime.parse('${_selectedMonth}-01');
+        monthDisplay = DateFormat('MMMM yyyy').format(parsedDate);
+      } catch (_) {}
+
+      // Load company logo asset
+      pw.MemoryImage? logoImage;
+      try {
+        final logoData = await rootBundle.load('assets/images/logo25.png');
+        logoImage = pw.MemoryImage(logoData.buffer.asUint8List());
+      } catch (_) {
+        try {
+          final logoData2 = await rootBundle.load('assets/images/logo.png');
+          logoImage = pw.MemoryImage(logoData2.buffer.asUint8List());
+        } catch (_) {}
+      }
+
+      final navyColor = PdfColor.fromHex('1E3A5F');
+      final darkNavy = PdfColor.fromHex('0B2545');
+      final lightBg = PdfColor.fromHex('F8FAFC');
+      final borderGrey = PdfColor.fromHex('CBD5E1');
+      final greenBg = PdfColor.fromHex('F0FDF4');
+      final greenBorder = PdfColor.fromHex('86EFAC');
+      final greenText = PdfColor.fromHex('166534');
+      final redBg = PdfColor.fromHex('FEF2F2');
+      final redBorder = PdfColor.fromHex('FECACA');
+      final redText = PdfColor.fromHex('991B1B');
 
       final pdf = pw.Document();
 
       pdf.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(32),
+          margin: const pw.EdgeInsets.symmetric(horizontal: 28, vertical: 24),
           build: (pw.Context context) {
             return pw.Container(
               decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.grey300, width: 1.5),
-                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                border: pw.Border.all(color: navyColor, width: 2),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(10)),
               ),
-              padding: const pw.EdgeInsets.all(20),
               child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  // Title
-                  pw.Center(
+                  // 1. Top Royal Header Banner
+                  pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: pw.BoxDecoration(
+                      color: navyColor,
+                      borderRadius: const pw.BorderRadius.vertical(top: pw.Radius.circular(8)),
+                    ),
+                    child: pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: pw.CrossAxisAlignment.center,
+                      children: [
+                        pw.Row(
+                          crossAxisAlignment: pw.CrossAxisAlignment.center,
+                          children: [
+                            if (logoImage != null) ...[
+                              pw.Container(
+                                width: 44,
+                                height: 44,
+                                padding: const pw.EdgeInsets.all(3),
+                                decoration: const pw.BoxDecoration(
+                                  color: PdfColors.white,
+                                  borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
+                                ),
+                                child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                              ),
+                              pw.SizedBox(width: 12),
+                            ],
+                            pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.Text(
+                                  'YATHARTH INSTITUTION',
+                                  style: pw.TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: pw.FontWeight.bold,
+                                    color: PdfColors.white,
+                                  ),
+                                ),
+                                pw.SizedBox(height: 2),
+                                pw.Text(
+                                  'Employee Management System - Official Pay Slip',
+                                  style: const pw.TextStyle(
+                                    fontSize: 9,
+                                    color: PdfColors.grey300,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: const pw.BoxDecoration(
+                            color: PdfColors.white,
+                            borderRadius: pw.BorderRadius.all(pw.Radius.circular(6)),
+                          ),
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.end,
+                            children: [
+                              pw.Text(
+                                'PAYSLIP',
+                                style: pw.TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: navyColor,
+                                ),
+                              ),
+                              pw.Text(
+                                monthDisplay,
+                                style: pw.TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: PdfColors.grey800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Content Container
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(14),
                     child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text(
-                          'YATHARTH INSTITUTION',
-                          style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
-                        ),
-                        pw.SizedBox(height: 4),
-                        pw.Text(
-                          'Salary Slip - $_selectedMonth',
-                          style: pw.TextStyle(fontSize: 14, color: PdfColors.grey700),
-                        ),
-                        pw.Divider(thickness: 1, color: PdfColors.grey400),
-                      ],
-                    ),
-                  ),
-                  pw.SizedBox(height: 10),
-
-                  // Employee Details Table
-                  pw.Container(
-                    color: PdfColors.grey100,
-                    padding: const pw.EdgeInsets.all(10),
-                    child: pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Column(
-                          crossAxisAlignment: pw.CrossAxisAlignment.start,
-                          children: [
-                            pw.Text('Employee Name: $empName', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
-                            pw.SizedBox(height: 4),
-                            pw.Text('Department: $empDept', style: const pw.TextStyle(fontSize: 10)),
-                          ],
-                        ),
-                        pw.Column(
-                          crossAxisAlignment: pw.CrossAxisAlignment.start,
-                          children: [
-                            pw.Text('Employee Code: $empCode', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
-                            pw.SizedBox(height: 4),
-                            pw.Text('Designation: $empDesg', style: const pw.TextStyle(fontSize: 10)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  pw.SizedBox(height: 16),
-
-                  // Earnings & Deductions
-                  pw.Row(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      // Earnings
-                      pw.Expanded(
-                        child: pw.Container(
+                        // 2. Employee Details Card
+                        pw.Container(
                           padding: const pw.EdgeInsets.all(10),
                           decoration: pw.BoxDecoration(
-                            border: pw.Border.all(color: PdfColors.green300),
+                            color: lightBg,
                             borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                            border: pw.Border.all(color: borderGrey),
                           ),
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          child: pw.Row(
                             children: [
-                              pw.Text('EARNINGS', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
-                              pw.Divider(color: PdfColors.green),
-                              _pdfRow('Basic Salary', '₹ ${NumberFormat('#,##0.00').format(basicSalary)}'),
-                              if (allowances > 0) _pdfRow('Allowances', '₹ ${NumberFormat('#,##0.00').format(allowances)}'),
-                              _pdfRow('Present Days', '$presentDays'),
-                              _pdfRow('Paid Leave', '$paidLeave'),
-                              if (earnedLeave > 0) _pdfRow('Earned Leave', '$earnedLeave'),
-                              if (weeklyOff > 0) _pdfRow('Weekly Off', '$weeklyOff'),
-                              if (holidays > 0) _pdfRow('Holidays', '$holidays'),
-                              pw.Divider(color: PdfColors.green),
-                              _pdfRow('Total Gross Earnings', '₹ ${NumberFormat('#,##0.00').format(grossEarnings)}', isBold: true),
+                              pw.Expanded(
+                                child: pw.Column(
+                                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                  children: [
+                                    _pdfKeyValue('Employee Name', empName, isBold: true),
+                                    pw.SizedBox(height: 4),
+                                    _pdfKeyValue('Employee Code', empCode),
+                                    pw.SizedBox(height: 4),
+                                    _pdfKeyValue('Department', empDept),
+                                  ],
+                                ),
+                              ),
+                              pw.SizedBox(width: 16),
+                              pw.Expanded(
+                                child: pw.Column(
+                                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                  children: [
+                                    _pdfKeyValue('Designation', empDesg),
+                                    pw.SizedBox(height: 4),
+                                    _pdfKeyValue('Pay Period', monthDisplay),
+                                    pw.SizedBox(height: 4),
+                                    _pdfKeyValue('Status', paymentStatus, isStatus: true),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                      ),
-                      pw.SizedBox(width: 12),
-                      // Deductions
-                      pw.Expanded(
-                        child: pw.Container(
-                          padding: const pw.EdgeInsets.all(10),
+                        pw.SizedBox(height: 10),
+
+                        // 3. Attendance Summary Strip
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: pw.BoxDecoration(
-                            border: pw.Border.all(color: PdfColors.red300),
+                            color: PdfColors.grey100,
                             borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                            border: pw.Border.all(color: borderGrey),
                           ),
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          child: pw.Row(
+                            mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
                             children: [
-                              pw.Text('DEDUCTIONS', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
-                              pw.Divider(color: PdfColors.red),
-                              _pdfRow('Unpaid Leave', '$unpaidLeave'),
-                              _pdfRow('Absent Days', '$absentDays'),
-                              _pdfRow('Half Days', '$halfDays'),
-                              _pdfRow('Late Days', '$lateDays'),
-                              pw.Divider(color: PdfColors.red),
-                              _pdfRow('Total Deductions', '₹ ${NumberFormat('#,##0.00').format(totalDeductions)}', isBold: true),
+                              _pdfMiniStat('Present Days', '${presentDays.toStringAsFixed(presentDays % 1 == 0 ? 0 : 1)}'),
+                              _pdfMiniStat('Paid Leave', '${paidLeave.toStringAsFixed(paidLeave % 1 == 0 ? 0 : 1)}'),
+                              if (earnedLeave > 0)
+                                _pdfMiniStat('Earned Leave', '${earnedLeave.toStringAsFixed(earnedLeave % 1 == 0 ? 0 : 1)}'),
+                              _pdfMiniStat('Weekly / Holiday', '${(weeklyOff + holidays).toStringAsFixed((weeklyOff + holidays) % 1 == 0 ? 0 : 1)}'),
+                              _pdfMiniStat('Absent / LOP', '${(absentDays + unpaidLeave).toStringAsFixed((absentDays + unpaidLeave) % 1 == 0 ? 0 : 1)}', isAlert: (absentDays + unpaidLeave) > 0),
                             ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  pw.SizedBox(height: 16),
+                        pw.SizedBox(height: 10),
 
-                  // Ledger summary
-                  if (previousDue > 0 || paidAmount > 0) ...[
-                    pw.Container(
-                      padding: const pw.EdgeInsets.all(10),
-                      color: PdfColors.blue50,
-                      child: pw.Column(
-                        children: [
-                          _pdfRow('Current Month Net', '₹ ${NumberFormat('#,##0.00').format(currentNet)}'),
-                          if (previousDue > 0) _pdfRow('Previous Due (Carry Forward)', '+ ₹ ${NumberFormat('#,##0.00').format(previousDue)}'),
-                          if (paidAmount > 0) _pdfRow('Amount Paid', '₹ ${NumberFormat('#,##0.00').format(paidAmount)}'),
-                          if (remainingDue > 0) _pdfRow('Outstanding Balance Due', '₹ ${NumberFormat('#,##0.00').format(remainingDue)}', isBold: true),
+                        // 4. Earnings vs Deductions Table
+                        pw.Row(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            // Earnings Column
+                            pw.Expanded(
+                              child: pw.Container(
+                                decoration: pw.BoxDecoration(
+                                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                                  border: pw.Border.all(color: greenBorder),
+                                ),
+                                child: pw.Column(
+                                  children: [
+                                    pw.Container(
+                                      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                      decoration: pw.BoxDecoration(
+                                        color: greenBg,
+                                        borderRadius: const pw.BorderRadius.vertical(top: pw.Radius.circular(5)),
+                                      ),
+                                      child: pw.Row(
+                                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          pw.Text('EARNINGS', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: greenText)),
+                                          pw.Text('AMOUNT', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: greenText)),
+                                        ],
+                                      ),
+                                    ),
+                                    pw.Padding(
+                                      padding: const pw.EdgeInsets.all(8),
+                                      child: pw.Column(
+                                        children: [
+                                          _pdfAmountRow('Basic Salary', _formatCurrency(basicSalary)),
+                                          if (allowances > 0)
+                                            _pdfAmountRow('Allowances / Bonus', _formatCurrency(allowances)),
+                                          _pdfAmountRow('Present Days Earned', '${presentDays.toStringAsFixed(presentDays % 1 == 0 ? 0 : 1)} Days'),
+                                          _pdfAmountRow('Paid Leave Days', '${paidLeave.toStringAsFixed(paidLeave % 1 == 0 ? 0 : 1)} Days'),
+                                          if (earnedLeave > 0)
+                                            _pdfAmountRow('Earned Leaves', '${earnedLeave.toStringAsFixed(earnedLeave % 1 == 0 ? 0 : 1)} Days'),
+                                          pw.Divider(color: greenBorder, thickness: 1),
+                                          _pdfAmountRow('Total Gross Earnings', _formatCurrency(grossEarnings), isBold: true, textColor: greenText),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            pw.SizedBox(width: 10),
+                            // Deductions Column
+                            pw.Expanded(
+                              child: pw.Container(
+                                decoration: pw.BoxDecoration(
+                                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                                  border: pw.Border.all(color: redBorder),
+                                ),
+                                child: pw.Column(
+                                  children: [
+                                    pw.Container(
+                                      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                      decoration: pw.BoxDecoration(
+                                        color: redBg,
+                                        borderRadius: const pw.BorderRadius.vertical(top: pw.Radius.circular(5)),
+                                      ),
+                                      child: pw.Row(
+                                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          pw.Text('DEDUCTIONS', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: redText)),
+                                          pw.Text('AMOUNT', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: redText)),
+                                        ],
+                                      ),
+                                    ),
+                                    pw.Padding(
+                                      padding: const pw.EdgeInsets.all(8),
+                                      child: pw.Column(
+                                        children: [
+                                          _pdfAmountRow('Unpaid Leave (LOP)', '${unpaidLeave.toStringAsFixed(unpaidLeave % 1 == 0 ? 0 : 1)} Days'),
+                                          _pdfAmountRow('Absent Days', '${absentDays.toStringAsFixed(absentDays % 1 == 0 ? 0 : 1)} Days'),
+                                          _pdfAmountRow('Half Days / Late', '${(halfDays + lateDays).toStringAsFixed((halfDays + lateDays) % 1 == 0 ? 0 : 1)} Days'),
+                                          if (attendanceDeduction > 0)
+                                            _pdfAmountRow('Attendance Deduction', _formatCurrency(attendanceDeduction)),
+                                          if (otherDeductions > 0)
+                                            _pdfAmountRow('Other Deductions', _formatCurrency(otherDeductions)),
+                                          pw.Divider(color: redBorder, thickness: 1),
+                                          _pdfAmountRow('Total Deductions', _formatCurrency(totalDeductions), isBold: true, textColor: redText),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        pw.SizedBox(height: 10),
+
+                        // 5. Ledger Breakdown (Previous Due, Paid, Remaining)
+                        if (previousDue > 0 || paidAmount > 0) ...[
+                          pw.Container(
+                            padding: const pw.EdgeInsets.all(8),
+                            decoration: pw.BoxDecoration(
+                              color: lightBg,
+                              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                              border: pw.Border.all(color: borderGrey),
+                            ),
+                            child: pw.Column(
+                              children: [
+                                _pdfAmountRow('Current Month Net Salary', _formatCurrency(currentNet)),
+                                if (previousDue > 0)
+                                  _pdfAmountRow('Previous Unpaid Due (Carry Forward)', '+ ${_formatCurrency(previousDue)}', textColor: redText),
+                                if (paidAmount > 0)
+                                  _pdfAmountRow('Amount Disbursed / Paid', '- ${_formatCurrency(paidAmount)}', textColor: greenText),
+                                if (remainingDue > 0)
+                                  _pdfAmountRow('Outstanding Balance Due', _formatCurrency(remainingDue), isBold: true, textColor: redText),
+                              ],
+                            ),
+                          ),
+                          pw.SizedBox(height: 10),
                         ],
-                      ),
-                    ),
-                    pw.SizedBox(height: 10),
-                  ],
 
-                  // Net Payable
-                  pw.Container(
-                    padding: const pw.EdgeInsets.all(12),
-                    color: PdfColors.blue900,
-                    child: pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Text('NET PAYABLE', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 13)),
-                        pw.Text('₹ ${NumberFormat('#,##0.00').format(finalNet)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 16)),
+                        // 6. Net Payable Banner
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: pw.BoxDecoration(
+                            color: darkNavy,
+                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                          ),
+                          child: pw.Row(
+                            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                            children: [
+                              pw.Column(
+                                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                children: [
+                                  pw.Text(
+                                    previousDue > 0 ? 'TOTAL PAYABLE (INCL. PREV DUE)' : 'NET SALARY PAYABLE',
+                                    style: pw.TextStyle(
+                                      fontWeight: pw.FontWeight.bold,
+                                      fontSize: 10,
+                                      color: PdfColors.white,
+                                    ),
+                                  ),
+                                  pw.Text(
+                                    _numberToWordsIndian(finalNet),
+                                    style: const pw.TextStyle(
+                                      fontSize: 8,
+                                      color: PdfColors.grey300,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              pw.Text(
+                                _formatCurrency(finalNet),
+                                style: pw.TextStyle(
+                                  fontWeight: pw.FontWeight.bold,
+                                  fontSize: 16,
+                                  color: PdfColors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        pw.SizedBox(height: 35),
+
+                        // 7. Signatures Area
+                        pw.Row(
+                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: pw.CrossAxisAlignment.end,
+                          children: [
+                            pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.center,
+                              children: [
+                                pw.Container(
+                                  width: 140,
+                                  decoration: const pw.BoxDecoration(
+                                    border: pw.Border(top: pw.BorderSide(color: PdfColors.grey500, width: 1)),
+                                  ),
+                                  padding: const pw.EdgeInsets.only(top: 4),
+                                  child: pw.Center(
+                                    child: pw.Text(
+                                      'Employee Signature',
+                                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.center,
+                              children: [
+                                pw.Container(
+                                  width: 160,
+                                  decoration: const pw.BoxDecoration(
+                                    border: pw.Border(top: pw.BorderSide(color: PdfColors.grey500, width: 1)),
+                                  ),
+                                  padding: const pw.EdgeInsets.only(top: 4),
+                                  child: pw.Center(
+                                    child: pw.Text(
+                                      'Authorized Signatory (HR / Director)',
+                                      style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: navyColor),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        pw.SizedBox(height: 14),
+
+                        // 8. Bottom Footnote
+                        pw.Center(
+                          child: pw.Text(
+                            'This is a computer-generated document from Yatharth EMS and does not require a physical stamp.',
+                            style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey500),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                  pw.SizedBox(height: 10),
-                  pw.Text('Amount in words: ${_numberToWords(finalNet)}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
-                  pw.Spacer(),
-                  pw.Center(
-                    child: pw.Text('This is a computer generated document and requires no signature.', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
                   ),
                 ],
               ),
@@ -720,7 +1025,7 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
               children: [
                 const Icon(Icons.check_circle_rounded, color: Colors.white),
                 const SizedBox(width: 8),
-                Expanded(child: Text('✅ Salary Slip PDF saved: ${file.path.split('/').last}')),
+                Expanded(child: Text('✅ Salary Slip PDF downloaded: ${file.path.split('/').last}')),
               ],
             ),
             backgroundColor: Colors.green[700],
@@ -740,21 +1045,81 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
     }
   }
 
-  pw.Widget _pdfRow(String label, String value, {bool isBold = false}) {
+  pw.Widget _pdfKeyValue(String key, String value, {bool isBold = false, bool isStatus = false}) {
+    return pw.Row(
+      children: [
+        pw.SizedBox(
+          width: 85,
+          child: pw.Text(
+            '$key:',
+            style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700),
+          ),
+        ),
+        pw.Expanded(
+          child: pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 8.5,
+              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              color: isStatus
+                  ? (value == 'PAID' ? PdfColors.green800 : (value == 'UNPAID' ? PdfColors.red800 : PdfColors.orange800))
+                  : PdfColors.black,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _pdfMiniStat(String title, String value, {bool isAlert = false}) {
+    return pw.Column(
+      children: [
+        pw.Text(
+          title,
+          style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey600),
+        ),
+        pw.SizedBox(height: 2),
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            fontSize: 9,
+            fontWeight: pw.FontWeight.bold,
+            color: isAlert ? PdfColors.red800 : PdfColors.blue900,
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _pdfAmountRow(String label, String value, {bool isBold = false, PdfColor? textColor}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 2),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: pw.TextStyle(fontSize: 9, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
-          pw.Text(value, style: pw.TextStyle(fontSize: 9, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              fontSize: 8.5,
+              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              color: textColor ?? PdfColors.grey800,
+            ),
+          ),
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 8.5,
+              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              color: textColor ?? PdfColors.grey800,
+            ),
+          ),
         ],
       ),
     );
   }
 
   String _numberToWords(double number) {
-    return '${NumberFormat('#,##0.00').format(number)} Rupees Only';
+    return _numberToWordsIndian(number);
   }
 
   @override
