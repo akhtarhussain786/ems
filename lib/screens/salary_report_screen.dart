@@ -2574,31 +2574,51 @@ class _MonthWiseLedgerModalState extends State<_MonthWiseLedgerModal> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_month_rounded,
-                            size: 16,
-                            color: const Color(0xFF1E3A5F),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            mName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E3A5F)),
-                          ),
-                          if (isCurrent) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1E3A5F),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text('Running', style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.bold)),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_month_rounded,
+                                  size: 15,
+                                  color: const Color(0xFF1E3A5F),
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    (m['cycle_period'] != null && m['cycle_period'].toString().isNotEmpty)
+                                        ? m['cycle_period'].toString()
+                                        : mName,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Color(0xFF1E3A5F)),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (isCurrent) ...[
+                                  const SizedBox(width: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF1E3A5F),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text('Running', style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ],
                             ),
+                            if (m['due_date_label'] != null && m['due_date_label'].toString().isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                '• Salary Due Date: ${m['due_date_label']} ($mName)',
+                                style: TextStyle(fontSize: 9.5, color: Colors.blueGrey[800], fontWeight: FontWeight.w600),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
