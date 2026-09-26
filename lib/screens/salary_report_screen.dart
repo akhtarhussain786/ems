@@ -541,6 +541,28 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
         ],
 
         const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _showMonthWiseLedgerSheet(_toInt(employee['id']), employee['name'] ?? 'Employee');
+            },
+            icon: const Icon(Icons.history_edu_rounded, size: 16),
+            label: const Text(
+              'View All Months Status (Paid & Pending)',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF1E3A5F),
+              side: const BorderSide(color: Color(0xFF1E3A5F), width: 1.2),
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
         Center(
           child: Text(
             'This is a computer generated salary slip.',
@@ -1819,10 +1841,11 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
           ),
           const SizedBox(height: 8),
 
-          // Action Buttons (View Slip & Payment History)
+          // Action Buttons (View Slip & Month-wise Ledger)
           Row(
             children: [
               Expanded(
+                flex: 3,
                 child: ElevatedButton.icon(
                   onPressed: () => _fetchSalarySlip(_toInt(employee['id'])),
                   icon: _loadingSlip
@@ -1833,7 +1856,7 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                         )
                       : const Icon(Icons.remove_red_eye_rounded, size: 16),
                   label: Text(
-                    _loadingSlip ? 'Loading...' : 'View Salary Slip',
+                    _loadingSlip ? 'Loading...' : 'Salary Slip',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -1850,23 +1873,46 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                   ),
                 ),
               ),
-              if ((s['payments'] is List && (s['payments'] as List).isNotEmpty) || paidAmount > 0) ...[
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: () => _showPaymentHistoryDialog(s),
-                  icon: const Icon(Icons.history_rounded, size: 20),
-                  tooltip: 'Payment History',
-                  color: const Color(0xFF1E3A5F),
-                  style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E3A5F).withOpacity(0.08),
-                    padding: const EdgeInsets.all(10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 3,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showMonthWiseLedgerSheet(_toInt(employee['id']), employee['name'] ?? 'Employee'),
+                  icon: const Icon(Icons.account_balance_wallet_rounded, size: 16),
+                  label: const Text(
+                    'Months Ledger',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF1E3A5F),
+                    side: const BorderSide(color: Color(0xFF1E3A5F), width: 1.2),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(10)),
+                    ),
                   ),
                 ),
-              ],
+              ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  void _showMonthWiseLedgerSheet(int employeeId, String empName) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _MonthWiseLedgerModal(
+        employeeId: employeeId,
+        employeeName: empName,
+        toDouble: _toDouble,
+        toInt: _toInt,
       ),
     );
   }
@@ -2075,6 +2121,491 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MonthWiseLedgerModal extends StatefulWidget {
+  final int employeeId;
+  final String employeeName;
+  final double Function(dynamic) toDouble;
+  final int Function(dynamic) toInt;
+
+  const _MonthWiseLedgerModal({
+    required this.employeeId,
+    required this.employeeName,
+    required this.toDouble,
+    required this.toInt,
+  });
+
+  @override
+  State<_MonthWiseLedgerModal> createState() => _MonthWiseLedgerModalState();
+}
+
+class _MonthWiseLedgerModalState extends State<_MonthWiseLedgerModal> {
+  bool _loading = true;
+  String? _error;
+  Map<String, dynamic>? _ledgerData;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLedger();
+  }
+
+  Future<void> _fetchLedger() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final res = await ApiService().post('salary/ledger', {
+        'employee_id': widget.employeeId,
+      });
+
+      if (mounted) {
+        if (res['success'] == true) {
+          setState(() => _ledgerData = res['data']);
+        } else {
+          setState(() => _error = res['message'] ?? 'Failed to load ledger');
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Drag Handle
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Modal Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.history_edu_rounded, color: Color(0xFF1E3A5F), size: 22),
+                        ),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Monthly Salary Ledger',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E3A5F),
+                              ),
+                            ),
+                            Text(
+                              widget.employeeName,
+                              style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.grey),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const Divider(height: 20),
+
+                // Content
+                Expanded(
+                  child: _loading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF1E3A5F),
+                            strokeWidth: 3,
+                          ),
+                        )
+                      : _error != null
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.error_outline_rounded, size: 40, color: Colors.red[300]),
+                                  const SizedBox(height: 8),
+                                  Text(_error!, style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                                  const SizedBox(height: 12),
+                                  ElevatedButton.icon(
+                                    onPressed: _fetchLedger,
+                                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                                    label: const Text('Retry'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF1E3A5F),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : _buildLedgerContent(scrollController),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLedgerContent(ScrollController scrollController) {
+    if (_ledgerData == null) return const SizedBox.shrink();
+
+    final summary = _ledgerData!['summary'] ?? {};
+    final months = (_ledgerData!['months'] as List<dynamic>?) ?? [];
+    final totalEarned = widget.toDouble(summary['total_earned']);
+    final totalPaid = widget.toDouble(summary['total_paid']);
+    final totalDue = widget.toDouble(summary['total_outstanding_due']);
+    final paidMonthsList = (summary['paid_months'] as List<dynamic>?) ?? [];
+    final unpaidMonthsList = (summary['unpaid_months'] as List<dynamic>?) ?? [];
+
+    return ListView(
+      controller: scrollController,
+      children: [
+        // 1. Summary Cards (Total Received vs Total Baki)
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1E3A5F), Color(0xFF2A5298)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blue.withOpacity(0.15),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 14),
+                              const SizedBox(width: 4),
+                              Text(
+                                'TOTAL RECEIVED',
+                                style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 9.5, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '₹ ${NumberFormat('#,##0.00').format(totalPaid)}',
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${paidMonthsList.length} Month${paidMonthsList.length == 1 ? '' : 's'} Paid',
+                            style: TextStyle(color: Colors.greenAccent[100], fontSize: 10, fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.pending_actions_rounded, color: Colors.orangeAccent, size: 14),
+                              const SizedBox(width: 4),
+                              Text(
+                                'OUTSTANDING BAKI',
+                                style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 9.5, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '₹ ${NumberFormat('#,##0.00').format(totalDue)}',
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${unpaidMonthsList.length} Month${unpaidMonthsList.length == 1 ? '' : 's'} Pending',
+                            style: TextStyle(color: Colors.orangeAccent[100], fontSize: 10, fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Total Earned (All Months):',
+                      style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 11),
+                    ),
+                    Text(
+                      '₹ ${NumberFormat('#,##0.00').format(totalEarned)}',
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Quick Month Status Chips
+        const Text(
+          'Month-by-Month Status Breakdown',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F)),
+        ),
+        const SizedBox(height: 10),
+
+        // 2. Month-wise Timeline Cards
+        ...months.map((m) {
+          final mName = m['month_name'] ?? m['month_year'] ?? '';
+          final netSal = widget.toDouble(m['net_salary']);
+          final paidAmt = widget.toDouble(m['paid_amount']);
+          final remDue = widget.toDouble(m['remaining_due']);
+          final status = (m['payment_status'] ?? 'unpaid').toString().toLowerCase();
+          final isCurrent = m['is_current'] == true;
+          final payments = (m['payments'] as List<dynamic>?) ?? [];
+
+          final isPaid = status == 'paid' || (paidAmt >= netSal && netSal > 0);
+          final isPartial = status == 'partially_paid' || (paidAmt > 0 && remDue > 0);
+
+          Color cardBorder = isPaid ? Colors.green[200]! : (isPartial ? Colors.orange[200]! : Colors.red[200]!);
+          Color statusBg = isPaid ? Colors.green[50]! : (isPartial ? Colors.orange[50]! : Colors.red[50]!);
+          Color statusText = isPaid ? Colors.green[800]! : (isPartial ? Colors.orange[800]! : Colors.red[800]!);
+          String statusLabel = isPaid ? 'PAID / MIL GYA' : (isPartial ? 'PARTIALLY PAID' : (isCurrent ? 'CURRENT MONTH (DUE)' : 'UNPAID / BAKI'));
+          IconData statusIcon = isPaid ? Icons.check_circle_rounded : (isPartial ? Icons.timelapse_rounded : Icons.cancel_rounded);
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cardBorder, width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: cardBorder.withOpacity(0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header of Month Card
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: statusBg,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(13)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_month_rounded,
+                            size: 16,
+                            color: const Color(0xFF1E3A5F),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            mName,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E3A5F)),
+                          ),
+                          if (isCurrent) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E3A5F),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text('Running', style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: cardBorder),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(statusIcon, size: 12, color: statusText),
+                            const SizedBox(width: 4),
+                            Text(
+                              statusLabel,
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusText),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Body of Month Card
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _statBox('Net Salary', '₹ ${NumberFormat('#,##0.00').format(netSal)}', const Color(0xFF1E3A5F)),
+                          _statBox('Amount Paid', '₹ ${NumberFormat('#,##0.00').format(paidAmt)}', Colors.green[700]!),
+                          _statBox('Balance Baki', '₹ ${NumberFormat('#,##0.00').format(remDue)}', remDue > 0 ? Colors.red[700]! : Colors.grey[600]!),
+                        ],
+                      ),
+
+                      // If payments exist for this month
+                      if (payments.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.green[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.green[100]!),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.payment_rounded, size: 13, color: Colors.green[800]),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Payment Received Details:',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green[900]),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              ...payments.map((p) {
+                                final pAmt = widget.toDouble(p['amount']);
+                                final pDt = p['payment_date'] ?? '';
+                                final pMode = (p['payment_method'] ?? 'bank_transfer').toString().replaceAll('_', ' ').toUpperCase();
+                                final pRef = p['reference_no'] ?? '';
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    '• ₹ ${NumberFormat('#,##0.00').format(pAmt)} on $pDt via $pMode${pRef.isNotEmpty ? ' (Ref: $pRef)' : ''}',
+                                    style: TextStyle(fontSize: 10, color: Colors.green[900], fontWeight: FontWeight.w500),
+                                  ),
+                                );
+                              }).toList(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _statBox(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[500])),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+        ),
+      ],
     );
   }
 }
