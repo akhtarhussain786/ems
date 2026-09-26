@@ -436,6 +436,110 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
           ),
         ),
 
+        // Payment Transactions & History Section (if any payments exist)
+        if ((s['payments'] is List) && (s['payments'] as List).isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.green[200]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.receipt_long_rounded, color: Colors.green[800], size: 18),
+                        const SizedBox(width: 6),
+                        Text(
+                          'PAYMENT TRANSACTIONS',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green[900]),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.green[200],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${(s['payments'] as List).length} PAID',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green[900]),
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(color: Colors.green),
+                ...(s['payments'] as List).map((p) {
+                  final pAmount = _toDouble(p['amount']);
+                  final pDate = p['payment_date'] ?? '';
+                  final pMethod = (p['payment_method'] ?? 'bank_transfer').toString().replaceAll('_', ' ').toUpperCase();
+                  final pRef = p['reference_no'] ?? '';
+                  final pNotes = p['notes'] ?? '';
+                  final pCreatedBy = p['created_by_name'] ?? '';
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green[100]!),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '₹ ${NumberFormat('#,##0.00').format(pAmount)}',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.green[800]),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green[100],
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                pMethod,
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.green[900]),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Date: $pDate', style: TextStyle(fontSize: 11, color: Colors.grey[700])),
+                            if (pRef.toString().isNotEmpty)
+                              Text('Ref: $pRef', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.grey[800])),
+                          ],
+                        ),
+                        if (pNotes.toString().isNotEmpty || pCreatedBy.toString().isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            '${pNotes.isNotEmpty ? pNotes : ''}${pCreatedBy.isNotEmpty ? ' (By: $pCreatedBy)' : ''}',
+                            style: TextStyle(fontSize: 10, color: Colors.grey[600], fontStyle: FontStyle.italic),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+        ],
+
         const SizedBox(height: 12),
         Center(
           child: Text(
@@ -1715,38 +1819,570 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
           ),
           const SizedBox(height: 8),
 
-          // View Slip Button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => _fetchSalarySlip(_toInt(employee['id'])),
-              icon: _loadingSlip
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.remove_red_eye_rounded, size: 16),
-              label: Text(
-                _loadingSlip ? 'Loading...' : 'View Salary Slip',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+          // Action Buttons (View Slip, Record Payment, Payment History)
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: ElevatedButton.icon(
+                  onPressed: () => _fetchSalarySlip(_toInt(employee['id'])),
+                  icon: _loadingSlip
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.remove_red_eye_rounded, size: 16),
+                  label: Text(
+                    _loadingSlip ? 'Loading...' : 'Salary Slip',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3A5F),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(10)),
+                    ),
+                    elevation: 0,
+                  ),
                 ),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A5F),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 9),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(10)),
+              if (remainingDue > 0) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 3,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showRecordPaymentDialog(s),
+                    icon: const Icon(Icons.payment_rounded, size: 16),
+                    label: const Text(
+                      'Pay Now',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(10)),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
                 ),
-                elevation: 0,
-              ),
-            ),
+              ],
+              if ((s['payments'] is List && (s['payments'] as List).isNotEmpty) || paidAmount > 0) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () => _showPaymentHistoryDialog(s),
+                  icon: const Icon(Icons.history_rounded, size: 20),
+                  tooltip: 'Payment History',
+                  color: const Color(0xFF1E3A5F),
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3A5F).withOpacity(0.08),
+                    padding: const EdgeInsets.all(8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
+    );
+  }
+
+  void _showRecordPaymentDialog(Map<String, dynamic> item) {
+    final employee = item['employee'] ?? {};
+    final salary = item['salary'] ?? {};
+    final empId = _toInt(employee['id']);
+    final payrollId = _toInt(salary['payroll_id']);
+    final empName = employee['name'] ?? 'Employee';
+    final currentNet = _toDouble(salary['current_net_salary'] ?? salary['net_salary']);
+    final totalPayable = _toDouble(salary['total_payable'] ?? currentNet);
+    final paidAmount = _toDouble(salary['paid_amount']);
+    final remainingDue = _toDouble(salary['remaining_due'] ?? (totalPayable - paidAmount));
+    final defaultAmount = remainingDue > 0 ? remainingDue : totalPayable;
+
+    final amountController = TextEditingController(
+      text: defaultAmount > 0 ? (defaultAmount % 1 == 0 ? defaultAmount.toInt().toString() : defaultAmount.toStringAsFixed(2)) : '',
+    );
+    final refController = TextEditingController();
+    final notesController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    String selectedMethod = 'bank_transfer';
+    bool isSubmitting = false;
+
+    final methods = [
+      {'key': 'bank_transfer', 'label': 'Bank Transfer (NEFT/RTGS/IMPS)'},
+      {'key': 'upi', 'label': 'UPI / Online'},
+      {'key': 'cash', 'label': 'Cash'},
+      {'key': 'cheque', 'label': 'Cheque'},
+    ];
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.green[50],
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.attach_money_rounded, color: Colors.green[700], size: 22),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Record Salary Payment',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E3A5F),
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 20, color: Colors.grey),
+                          onPressed: isSubmitting ? null : () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                    const Divider(),
+                    const SizedBox(height: 8),
+
+                    // Outstanding Summary Box
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.blue[100]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            empName,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E3A5F)),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Text('Total Outstanding Due: ', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                              Text(
+                                '₹ ${NumberFormat('#,##0.00').format(remainingDue > 0 ? remainingDue : totalPayable)}',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.red[700]),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Payment Amount Input
+                    const Text('Payment Amount (₹) *', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        hintText: 'Enter payment amount',
+                        prefixText: '₹ ',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, left: 2),
+                      child: Text(
+                        'Enter full or partial payment amount. Oldest unpaid balances will be cleared first (FIFO).',
+                        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Payment Date & Payment Method Row
+                    Row(
+                      children: [
+                        // Payment Date Picker
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Payment Date', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                              const SizedBox(height: 6),
+                              InkWell(
+                                onTap: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: selectedDate,
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime.now().add(const Duration(days: 30)),
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() => selectedDate = picked);
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey[400]!),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        DateFormat('dd / MM / yyyy').format(selectedDate),
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                                      ),
+                                      const Icon(Icons.calendar_today_rounded, size: 16, color: Colors.grey),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Payment Method Dropdown
+                    const Text('Payment Method', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[400]!),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: selectedMethod,
+                          isExpanded: true,
+                          style: const TextStyle(fontSize: 12, color: Colors.black),
+                          items: methods.map((m) {
+                            return DropdownMenuItem<String>(
+                              value: m['key'],
+                              child: Text(m['label']!),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => selectedMethod = val);
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Reference Number
+                    const Text('Transaction / Reference Number', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: refController,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. UTR / Cheque / Txn ID',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Notes
+                    const Text('Payment Notes / Remarks', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: notesController,
+                      maxLines: 2,
+                      decoration: InputDecoration(
+                        hintText: 'Optional notes...',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Action Buttons
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: isSubmitting ? null : () => Navigator.pop(context),
+                          child: Text('Cancel', style: TextStyle(color: Colors.grey[700])),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: isSubmitting
+                              ? null
+                              : () async {
+                                  final amt = double.tryParse(amountController.text.trim()) ?? 0;
+                                  if (amt <= 0) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Please enter a valid payment amount.'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  setDialogState(() => isSubmitting = true);
+                                  try {
+                                    final res = await ApiService().post('salary/pay', {
+                                      'employee_id': empId,
+                                      'payroll_id': payrollId > 0 ? payrollId : null,
+                                      'amount': amt,
+                                      'payment_date': DateFormat('yyyy-MM-dd').format(selectedDate),
+                                      'payment_method': selectedMethod,
+                                      'reference_no': refController.text.trim(),
+                                      'notes': notesController.text.trim(),
+                                    });
+
+                                    if (mounted) {
+                                      if (res['success'] == true) {
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Row(
+                                              children: [
+                                                const Icon(Icons.check_circle_rounded, color: Colors.white),
+                                                const SizedBox(width: 8),
+                                                Text('✅ Payment of ₹${NumberFormat('#,##0.00').format(amt)} recorded successfully!'),
+                                              ],
+                                            ),
+                                            backgroundColor: Colors.green[700],
+                                            behavior: SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          ),
+                                        );
+                                        _fetchSalaryData();
+                                      } else {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(res['message'] ?? 'Failed to record payment'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                                      );
+                                    }
+                                  } finally {
+                                    setDialogState(() => isSubmitting = false);
+                                  }
+                                },
+                          icon: isSubmitting
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.check_circle_rounded, size: 16),
+                          label: Text(isSubmitting ? 'Saving...' : 'Confirm Payment'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green[700],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showPaymentHistoryDialog(Map<String, dynamic> item) {
+    final employee = item['employee'] ?? {};
+    final payments = (item['payments'] as List<dynamic>?) ?? [];
+    final empName = employee['name'] ?? 'Employee';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.55,
+          minChildSize: 0.3,
+          maxChildSize: 0.85,
+          expand: false,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Payment Transactions',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F)),
+                          ),
+                          Text(empName, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.green[50],
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.green[200]!),
+                        ),
+                        child: Text(
+                          '${payments.length} Transaction${payments.length == 1 ? '' : 's'}',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green[800]),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 20),
+                  Expanded(
+                    child: payments.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.receipt_long_outlined, size: 48, color: Colors.grey[300]),
+                                const SizedBox(height: 8),
+                                Text('No payment transactions found', style: TextStyle(color: Colors.grey[500])),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: scrollController,
+                            itemCount: payments.length,
+                            itemBuilder: (context, i) {
+                              final p = payments[i];
+                              final pAmount = _toDouble(p['amount']);
+                              final pDate = p['payment_date'] ?? '';
+                              final pMethod = (p['payment_method'] ?? 'bank_transfer').toString().replaceAll('_', ' ').toUpperCase();
+                              final pRef = p['reference_no'] ?? '';
+                              final pNotes = p['notes'] ?? '';
+                              final pCreatedBy = p['created_by_name'] ?? '';
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[50],
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: Colors.grey[200]!),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          '₹ ${NumberFormat('#,##0.00').format(pAmount)}',
+                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.green[800]),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue[50],
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: Colors.blue[100]!),
+                                          ),
+                                          child: Text(
+                                            pMethod,
+                                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.blue[900]),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.calendar_today_rounded, size: 12, color: Colors.grey),
+                                            const SizedBox(width: 4),
+                                            Text('Date: $pDate', style: TextStyle(fontSize: 11, color: Colors.grey[700])),
+                                          ],
+                                        ),
+                                        if (pRef.toString().isNotEmpty)
+                                          Text('Ref: $pRef', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.grey[800])),
+                                      ],
+                                    ),
+                                    if (pNotes.toString().isNotEmpty || pCreatedBy.toString().isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${pNotes.isNotEmpty ? pNotes : ''}${pCreatedBy.isNotEmpty ? ' (Recorded by: $pCreatedBy)' : ''}',
+                                        style: TextStyle(fontSize: 10, color: Colors.grey[600], fontStyle: FontStyle.italic),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
