@@ -477,7 +477,7 @@ class _SalaryReportScreenState extends State<SalaryReportScreen> with SingleTick
                 ),
                 const Divider(color: Colors.green),
                 ...(s['payments'] as List).map((p) {
-                  final pAmount = _toDouble(p['amount']);
+                  final pAmount = _toDouble(p['payment_amount'] ?? p['amount']);
                   final pDate = p['payment_date'] ?? '';
                   final pMethod = (p['payment_method'] ?? 'bank_transfer').toString().replaceAll('_', ' ').toUpperCase();
                   final pRef = p['reference_no'] ?? '';
@@ -2661,7 +2661,7 @@ class _MonthWiseLedgerModalState extends State<_MonthWiseLedgerModal> {
                               ),
                               const SizedBox(height: 4),
                               ...payments.map((p) {
-                                final pAmt = widget.toDouble(p['amount']);
+                                final pAmt = widget.toDouble(p['payment_amount'] ?? p['amount']);
                                 final pDt = p['payment_date'] ?? '';
                                 final pMode = (p['payment_method'] ?? 'bank_transfer').toString().replaceAll('_', ' ').toUpperCase();
                                 final pRef = p['reference_no'] ?? '';
