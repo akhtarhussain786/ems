@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
-import 'lead_detail_screen.dart';
 
 class TelecallerScreen extends StatefulWidget {
   const TelecallerScreen({super.key});
@@ -33,6 +32,108 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
   String _datePreset = 'all'; // 'all', 'today', 'yesterday', 'this_week', 'this_month', 'custom'
   DateTimeRange? _selectedDateRange;
   String _sortBy = 'default'; // 'default', 'newest', 'oldest', 'follow_up_asc', 'follow_up_desc', 'name_asc'
+
+  // Standard 11 Call Outcomes
+  static const List<Map<String, dynamic>> _callOutcomes = [
+    {
+      'label': 'Connected — Interested',
+      'icon': Icons.thumb_up_alt_rounded,
+      'color': Color(0xFF2E7D32),
+      'requiresFollowUp': false,
+    },
+    {
+      'label': 'Connected — Not Interested',
+      'icon': Icons.thumb_down_alt_rounded,
+      'color': Color(0xFFC62828),
+      'requiresFollowUp': false,
+    },
+    {
+      'label': 'No Answer',
+      'icon': Icons.phone_missed_rounded,
+      'color': Color(0xFFEF6C00),
+      'requiresFollowUp': false,
+    },
+    {
+      'label': 'Busy',
+      'icon': Icons.phone_paused_rounded,
+      'color': Color(0xFFD84315),
+      'requiresFollowUp': false,
+    },
+    {
+      'label': 'Switched Off',
+      'icon': Icons.power_settings_new_rounded,
+      'color': Color(0xFF546E7A),
+      'requiresFollowUp': false,
+    },
+    {
+      'label': 'Invalid Number',
+      'icon': Icons.error_outline_rounded,
+      'color': Color(0xFFB71C1C),
+      'requiresFollowUp': false,
+    },
+    {
+      'label': 'Call Back Required',
+      'icon': Icons.phone_callback_rounded,
+      'color': Color(0xFF3949AB),
+      'requiresFollowUp': true,
+    },
+    {
+      'label': 'Follow-up Scheduled',
+      'icon': Icons.event_available_rounded,
+      'color': Color(0xFF6A1B9A),
+      'requiresFollowUp': true,
+    },
+    {
+      'label': 'Meeting Requested',
+      'icon': Icons.groups_rounded,
+      'color': Color(0xFF00897B),
+      'requiresFollowUp': true,
+    },
+    {
+      'label': 'Converted / Successful',
+      'icon': Icons.verified_rounded,
+      'color': Color(0xFF1B5E20),
+      'requiresFollowUp': false,
+    },
+    {
+      'label': 'Other',
+      'icon': Icons.more_horiz_rounded,
+      'color': Color(0xFF616161),
+      'requiresFollowUp': false,
+    },
+  ];
+
+  Color _outcomeColor(String? outcome) {
+    if (outcome == null || outcome.isEmpty) return Colors.grey;
+    for (final item in _callOutcomes) {
+      if (item['label'].toString().toLowerCase() == outcome.toLowerCase()) {
+        return item['color'] as Color;
+      }
+    }
+    return _statusColor(outcome);
+  }
+
+  IconData _outcomeIcon(String? outcome) {
+    if (outcome == null || outcome.isEmpty) return Icons.phone_rounded;
+    for (final item in _callOutcomes) {
+      if (item['label'].toString().toLowerCase() == outcome.toLowerCase()) {
+        return item['icon'] as IconData;
+      }
+    }
+    return Icons.phone_callback_rounded;
+  }
+
+  List<dynamic> get _displayedFollowUps {
+    final query = _searchCtrl.text.trim().toLowerCase();
+    if (query.isEmpty) return _followUps;
+    return _followUps.where((f) {
+      final name = (f['lead_name'] ?? f['customer_name'] ?? '').toString().toLowerCase();
+      final phone = (f['lead_phone'] ?? f['phone'] ?? f['customer_phone'] ?? '').toString().toLowerCase();
+      final notes = (f['notes'] ?? '').toString().toLowerCase();
+      final req = (f['lead_requirement'] ?? '').toString().toLowerCase();
+      return name.contains(query) || phone.contains(query) || notes.contains(query) || req.contains(query);
+    }).toList();
+  }
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -161,18 +262,22 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
   void _onSearchChanged(String v) {
     setState(() {});
     _searchDebounce?.cancel();
-    if (v.trim().isEmpty) {
-      _fetch();
-    } else {
-      _searchDebounce = Timer(const Duration(milliseconds: 400), () {
-        if (mounted) _fetch();
-      });
-    }
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) _fetch();
+    });
   }
 
   void _onSearchSubmitted([String? query]) {
     _searchDebounce?.cancel();
     HapticFeedback.lightImpact();
+    _fetch();
+  }
+
+  void _clearSearch() {
+    HapticFeedback.selectionClick();
+    _searchDebounce?.cancel();
+    _searchCtrl.clear();
+    setState(() {});
     _fetch();
   }
 
@@ -240,7 +345,7 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
         // Automatically open the unified Call Log & Follow-up dialog so when they return to the app, it's ready!
         if (lead != null && mounted) {
           Future.delayed(const Duration(milliseconds: 300), () {
-            if (mounted) _showCallDialog(lead);
+            if (mounted) _showCallFeedbackDialog(lead);
           });
         }
         return;
@@ -258,7 +363,7 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
       ),
     );
     if (lead != null && mounted) {
-      _showCallDialog(lead);
+      _showCallFeedbackDialog(lead);
     }
   }
 
@@ -305,7 +410,6 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
     String selectedSource = 'Call';
     String selectedPriority = 'Medium';
     DateTime? selectedFupDate;
-    TimeOfDay? selectedFupTime;
     bool isSaving = false;
 
     showModalBottomSheet(
@@ -1233,10 +1337,7 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                   suffixIcon: _searchCtrl.text.isNotEmpty
                       ? IconButton(
                     icon: Icon(Icons.clear_rounded, color: Colors.grey[400], size: 20),
-                    onPressed: () {
-                      _searchCtrl.clear();
-                      _onSearchSubmitted();
-                    },
+                    onPressed: _clearSearch,
                   )
                       : null,
                 ),
@@ -1361,20 +1462,56 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
   // ==================== LEADS LIST ====================
   Widget _buildLeads() {
     if (_leads.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      return RefreshIndicator(
+        onRefresh: _fetch,
+        color: const Color(0xFF1E3A5F),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            Icon(Icons.people_outline_rounded, size: 64, color: Colors.grey.shade400),
-            const SizedBox(height: 12),
-            Text(
-              'No leads found',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 15, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _activeFilterCount > 0 ? 'Try clearing or changing filters' : 'Tap "+ Create Inquiry" to add a lead',
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+            SizedBox(height: MediaQuery.of(context).size.height * 0.18),
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _searchCtrl.text.trim().isNotEmpty ? Icons.search_off_rounded : Icons.people_outline_rounded,
+                      size: 64,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _searchCtrl.text.trim().isNotEmpty
+                          ? 'No leads found matching "${_searchCtrl.text.trim()}"'
+                          : 'No leads found',
+                      style: TextStyle(color: Colors.grey.shade700, fontSize: 15, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _searchCtrl.text.trim().isNotEmpty
+                          ? 'Check customer name, mobile number, or company name'
+                          : (_activeFilterCount > 0 ? 'Try clearing or changing filters' : 'Tap "+ Create Inquiry" to add a lead'),
+                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (_searchCtrl.text.trim().isNotEmpty || _activeFilterCount > 0) ...[
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _resetFilters,
+                        icon: const Icon(Icons.clear_all_rounded, size: 16),
+                        label: const Text('Reset All Filters / Search'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E3A5F),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -1409,6 +1546,19 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
             creatorName = l['creator_username'].toString();
           } else {
             creatorName = 'Admin / System';
+          }
+
+          // Assigned Telecaller info
+          String assignedName = '';
+          if (l['assigned_first'] != null && l['assigned_first'].toString().trim().isNotEmpty) {
+            assignedName = "${l['assigned_first']} ${l['assigned_last'] ?? ''}".trim();
+            if (l['assigned_code'] != null && l['assigned_code'].toString().isNotEmpty) {
+              assignedName += " (${l['assigned_code']})";
+            }
+          } else if (l['assigned_to'] != null && l['assigned_to'].toString().isNotEmpty) {
+            assignedName = "Telecaller #${l['assigned_to']}";
+          } else {
+            assignedName = 'Unassigned';
           }
 
           // Follow-up formatted with Day
@@ -1575,29 +1725,125 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                     ),
 
                   const SizedBox(height: 2),
-                  // CREATED BY (DIRECTLY VISIBLE IN SUBTITLE)
-                  Text(
-                    'Created by: $creatorName',
-                    style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  // ASSIGNED TELECALLER & CREATOR ROW
+                  Row(
+                    children: [
+                      Icon(Icons.headset_mic_rounded, size: 10.5, color: assignedName == 'Unassigned' ? Colors.grey : const Color(0xFF1E3A5F)),
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text(
+                          'Assigned: $assignedName',
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                            color: assignedName == 'Unassigned' ? Colors.grey.shade600 : const Color(0xFF1E3A5F),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '• by $creatorName',
+                        style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
+
+                  // LATEST CALL FEEDBACK BADGE
+                  if ((l['latest_call_outcome'] ?? l['latest_call_status']) != null &&
+                      (l['latest_call_outcome'] ?? l['latest_call_status']).toString().isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _outcomeColor((l['latest_call_outcome'] ?? l['latest_call_status']).toString()).withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: _outcomeColor((l['latest_call_outcome'] ?? l['latest_call_status']).toString()).withOpacity(0.2),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _outcomeIcon((l['latest_call_outcome'] ?? l['latest_call_status']).toString()),
+                            size: 10,
+                            color: _outcomeColor((l['latest_call_outcome'] ?? l['latest_call_status']).toString()),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              'Last: ${l['latest_call_outcome'] ?? l['latest_call_status']}',
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                                color: _outcomeColor((l['latest_call_outcome'] ?? l['latest_call_status']).toString()),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (l['latest_call_at'] != null && l['latest_call_at'].toString().isNotEmpty) ...[
+                            const SizedBox(width: 4),
+                            Text(
+                              '• ${l['latest_call_at'].toString().length >= 16 ? l['latest_call_at'].toString().substring(5, 16) : l['latest_call_at']}',
+                              style: TextStyle(fontSize: 8.5, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  status.toUpperCase(),
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
+              trailing: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      status.toUpperCase(),
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 4),
+                  InkWell(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      _showCallFeedbackDialog(l);
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E3A5F).withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFF1E3A5F).withOpacity(0.2), width: 0.8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.rate_review_rounded, size: 11, color: Color(0xFF1E3A5F)),
+                          SizedBox(width: 2),
+                          Text(
+                            'Feedback',
+                            style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
               children: [
                 Padding(
@@ -1651,7 +1897,33 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                         ),
 
                       const SizedBox(height: 6),
-                      // Action Buttons Row 1: Call, WhatsApp, Follow-up
+                      // Latest Call Note preview if available
+                      if (l['latest_call_notes'] != null && l['latest_call_notes'].toString().isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E3A5F).withOpacity(0.04),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF1E3A5F).withOpacity(0.12)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.rate_review_outlined, size: 14, color: Color(0xFF1E3A5F)),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Latest Call Note: ${l['latest_call_notes']}',
+                                  style: TextStyle(color: Colors.grey.shade800, fontSize: 11),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      const SizedBox(height: 6),
+                      // Action Buttons Row 1: Call, WhatsApp, Immediate Feedback
                       Row(
                         children: [
                           Expanded(
@@ -1674,33 +1946,33 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                           const SizedBox(width: 6),
                           Expanded(
                             child: _buildGlassActionButton(
+                              Icons.rate_review_rounded,
+                              'Feedback',
+                              () => _showCallFeedbackDialog(l),
+                              const Color(0xFF1E3A5F),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // Action Buttons Row 2: Follow-up, Qualify, Not Int.
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildGlassActionButton(
                               Icons.event_rounded,
                               'Follow-up',
                               () => _showFollowUpDialog(l),
                               Colors.deepPurple,
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      // Action Buttons Row 2: Qualify, Status, Log Call
-                      Row(
-                        children: [
+                          const SizedBox(width: 6),
                           Expanded(
                             child: _buildGlassActionButton(
                               Icons.check_circle_rounded,
                               'Qualify',
                               () => _qualifyLead(l),
                               Colors.blue,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: _buildGlassActionButton(
-                              Icons.edit_note_rounded,
-                              'Log Call',
-                              () => _showCallDialog(l),
-                              Colors.teal,
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -1756,16 +2028,49 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
 
   // ==================== FOLLOW-UPS LIST ====================
   Widget _buildFollowUps() {
-    if (_followUps.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+    final displayed = _displayedFollowUps;
+    if (displayed.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _fetch,
+        color: const Color(0xFF1E3A5F),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            Icon(Icons.event_note_rounded, size: 64, color: Colors.grey.shade400),
-            const SizedBox(height: 12),
-            Text(
-              'No due follow-ups for today',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 14, fontWeight: FontWeight.w500),
+            SizedBox(height: MediaQuery.of(context).size.height * 0.18),
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _searchCtrl.text.trim().isNotEmpty ? Icons.search_off_rounded : Icons.event_note_rounded,
+                      size: 64,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _searchCtrl.text.trim().isNotEmpty
+                          ? 'No follow-ups match "${_searchCtrl.text.trim()}"'
+                          : 'No due follow-ups for today',
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                    if (_searchCtrl.text.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: _clearSearch,
+                        icon: const Icon(Icons.clear_rounded, size: 16),
+                        label: const Text('Clear Search'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E3A5F),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -1777,9 +2082,9 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
       color: const Color(0xFF1E3A5F),
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 80),
-        itemCount: _followUps.length,
+        itemCount: displayed.length,
         itemBuilder: (_, i) {
-          final f = _followUps[i];
+          final f = displayed[i];
           final leadName = f['lead_name'] ?? f['customer_name'] ?? 'Unknown';
           final phone = f['lead_phone'] ?? f['phone'] ?? f['customer_phone'] ?? '';
           final requirement = f['lead_requirement']?.toString() ?? '';
@@ -1894,15 +2199,33 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
     );
   }
 
-  // ==================== CALL & FOLLOW-UP DIALOG ====================
-  void _showCallDialog(Map<String, dynamic> l) {
-    String callStatus = 'connected';
-    final notesCtrl = TextEditingController();
+  // ==================== IMMEDIATE CALL FEEDBACK MODAL ====================
+  void _showCallFeedbackDialog(Map<String, dynamic> l) {
+    HapticFeedback.lightImpact();
     final phone = l['phone'] ?? l['customer_phone'] ?? l['mobile'] ?? '';
     final name = l['customer_name'] ?? 'Customer';
     final leadId = l['lead_id'] ?? l['id'];
+    final notesCtrl = TextEditingController();
+    
+    // Default outcome
+    String selectedOutcome = (l['latest_call_outcome'] ?? l['latest_call_status'] ?? 'Connected — Interested').toString();
+    bool match = _callOutcomes.any((item) => item['label'].toString().toLowerCase() == selectedOutcome.toLowerCase());
+    if (!match) {
+      selectedOutcome = 'Connected — Interested';
+    } else {
+      selectedOutcome = _callOutcomes.firstWhere((item) => item['label'].toString().toLowerCase() == selectedOutcome.toLowerCase())['label'] as String;
+    }
+
     DateTime? selectedFupDate;
+    TimeOfDay? selectedFupTime = const TimeOfDay(hour: 10, minute: 30);
     bool isSubmitting = false;
+    String? validationError;
+
+    // Pre-select follow-up date if outcome requires it
+    final initialMap = _callOutcomes.firstWhere((item) => item['label'] == selectedOutcome, orElse: () => _callOutcomes.first);
+    if (initialMap['requiresFollowUp'] == true) {
+      selectedFupDate = DateTime.now().add(const Duration(days: 1));
+    }
 
     showModalBottomSheet(
       context: context,
@@ -1915,6 +2238,14 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
           final tomorrow = now.add(const Duration(days: 1));
           final in2Days = now.add(const Duration(days: 2));
           final in3Days = now.add(const Duration(days: 3));
+          final in1Week = now.add(const Duration(days: 7));
+
+          final currentOutcomeMap = _callOutcomes.firstWhere(
+            (item) => item['label'] == selectedOutcome,
+            orElse: () => _callOutcomes.first,
+          );
+          final bool requiresFollowUp = currentOutcomeMap['requiresFollowUp'] == true;
+          final Color currentOutcomeColor = currentOutcomeMap['color'] as Color;
 
           return Container(
             padding: EdgeInsets.only(
@@ -1934,10 +2265,10 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.12),
+                          color: const Color(0xFF1E3A5F).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(Icons.phone_callback_rounded, color: Colors.green, size: 22),
+                        child: const Icon(Icons.rate_review_rounded, color: Color(0xFF1E3A5F), size: 22),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -1945,16 +2276,29 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              name,
+                              'Call Feedback: $name',
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F)),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            if (phone.isNotEmpty)
-                              Text(
-                                phone,
-                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-                              ),
+                            Row(
+                              children: [
+                                if (phone.isNotEmpty)
+                                  Text(
+                                    phone,
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                                  ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text('#$leadId', style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -1968,196 +2312,352 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                   ),
                   const Divider(height: 20),
 
-                  // 1. Call Outcome
-                  const Text('CALL OUTCOME *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: callStatus,
-                    items: [
-                      'connected', 'interested', 'callback', 'follow_up', 'busy',
-                      'no_answer', 'not_interested', 'wrong_number', 'won'
-                    ].map((s) => DropdownMenuItem(
-                      value: s,
-                      child: Text(
-                        s.replaceAll('_', ' ').toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _statusColor(s),
-                        ),
-                      ),
-                    )).toList(),
-                    onChanged: (v) {
-                      setLocalState(() {
-                        callStatus = v ?? 'connected';
-                        // If user selects follow_up or callback, pre-select tomorrow if none chosen
-                        if ((callStatus == 'follow_up' || callStatus == 'callback' || callStatus == 'interested') && selectedFupDate == null) {
-                          selectedFupDate = tomorrow;
-                        }
-                      });
-                    },
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.assessment_outlined, size: 20),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // 2. Schedule Next Follow-up (Quick Chips)
-                  Row(
-                    children: [
-                      const Text('NEXT FOLLOW-UP (DATE & DAY)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-                      const Spacer(),
-                      if (selectedFupDate != null)
-                        GestureDetector(
-                          onTap: () => setLocalState(() => selectedFupDate = null),
-                          child: const Text('Clear', style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold)),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-
-                  // Quick Date Chips
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      _buildQuickDayChip(
-                        'Tomorrow (${DateFormat('E').format(tomorrow)})',
-                        selectedFupDate != null &&
-                            selectedFupDate!.year == tomorrow.year &&
-                            selectedFupDate!.month == tomorrow.month &&
-                            selectedFupDate!.day == tomorrow.day,
-                        () => setLocalState(() => selectedFupDate = tomorrow),
-                      ),
-                      _buildQuickDayChip(
-                        '+2 Days (${DateFormat('E').format(in2Days)})',
-                        selectedFupDate != null &&
-                            selectedFupDate!.year == in2Days.year &&
-                            selectedFupDate!.month == in2Days.month &&
-                            selectedFupDate!.day == in2Days.day,
-                        () => setLocalState(() => selectedFupDate = in2Days),
-                      ),
-                      _buildQuickDayChip(
-                        '+3 Days (${DateFormat('E').format(in3Days)})',
-                        selectedFupDate != null &&
-                            selectedFupDate!.year == in3Days.year &&
-                            selectedFupDate!.month == in3Days.month &&
-                            selectedFupDate!.day == in3Days.day,
-                        () => setLocalState(() => selectedFupDate = in3Days),
-                      ),
-                      _buildQuickDayChip(
-                        'Custom Date 📅',
-                        selectedFupDate != null &&
-                            (selectedFupDate!.day != tomorrow.day &&
-                                selectedFupDate!.day != in2Days.day &&
-                                selectedFupDate!.day != in3Days.day),
-                        () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: selectedFupDate ?? tomorrow,
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(const Duration(days: 90)),
-                            helpText: 'SELECT FOLLOW-UP DATE & DAY',
-                          );
-                          if (picked != null) {
-                            setLocalState(() => selectedFupDate = picked);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Selected Follow-up Display Box
-                  if (selectedFupDate != null)
+                  // Validation Error
+                  if (validationError != null) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
-                        color: Colors.deepPurple.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.deepPurple.shade300),
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade200),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.alarm_on_rounded, color: Colors.deepPurple, size: 18),
-                          const SizedBox(width: 8),
+                          const Icon(Icons.error_outline_rounded, color: Colors.red, size: 16),
+                          const SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              'Follow-up: ${DateFormat('dd MMM yyyy (EEEE)').format(selectedFupDate!)}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Colors.deepPurple),
+                              validationError!,
+                              style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w600),
                             ),
                           ),
                         ],
                       ),
                     ),
+                  ],
+
+                  // 1. Call Outcome selector
+                  Row(
+                    children: [
+                      const Text('SELECT CALL OUTCOME *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const Spacer(),
+                      Text(
+                        selectedOutcome,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: currentOutcomeColor),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _callOutcomes.map((item) {
+                      final label = item['label'] as String;
+                      final isSelected = selectedOutcome == label;
+                      final color = item['color'] as Color;
+                      final icon = item['icon'] as IconData;
+
+                      return ChoiceChip(
+                        avatar: Icon(icon, size: 14, color: isSelected ? Colors.white : color),
+                        label: Text(label),
+                        labelStyle: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected ? Colors.white : Colors.grey.shade800,
+                        ),
+                        selected: isSelected,
+                        selectedColor: color,
+                        backgroundColor: color.withOpacity(0.08),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: BorderSide(
+                            color: isSelected ? color : color.withOpacity(0.3),
+                            width: isSelected ? 1.5 : 0.8,
+                          ),
+                        ),
+                        onSelected: (val) {
+                          if (val) {
+                            setLocalState(() {
+                              selectedOutcome = label;
+                              validationError = null;
+                              if (item['requiresFollowUp'] == true && selectedFupDate == null) {
+                                selectedFupDate = tomorrow;
+                              }
+                            });
+                          }
+                        },
+                      );
+                    }).toList(),
+                  ),
                   const SizedBox(height: 14),
 
-                  // 3. Notes / Remarks
+                  // 2. Schedule Next Follow-up
+                  if (requiresFollowUp || selectedFupDate != null) ...[
+                    Row(
+                      children: [
+                        Text(
+                          requiresFollowUp ? 'FOLLOW-UP DATE & TIME *' : 'FOLLOW-UP (OPTIONAL)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: requiresFollowUp ? Colors.deepPurple : Colors.grey,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (selectedFupDate != null)
+                          GestureDetector(
+                            onTap: () {
+                              setLocalState(() {
+                                selectedFupDate = null;
+                                validationError = null;
+                              });
+                            },
+                            child: const Text('Clear Follow-up', style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _buildQuickDayChip(
+                          'Tomorrow (${DateFormat('E').format(tomorrow)})',
+                          selectedFupDate != null &&
+                              selectedFupDate!.year == tomorrow.year &&
+                              selectedFupDate!.month == tomorrow.month &&
+                              selectedFupDate!.day == tomorrow.day,
+                          () => setLocalState(() {
+                            selectedFupDate = tomorrow;
+                            validationError = null;
+                          }),
+                        ),
+                        _buildQuickDayChip(
+                          '+2 Days (${DateFormat('E').format(in2Days)})',
+                          selectedFupDate != null &&
+                              selectedFupDate!.year == in2Days.year &&
+                              selectedFupDate!.month == in2Days.month &&
+                              selectedFupDate!.day == in2Days.day,
+                          () => setLocalState(() {
+                            selectedFupDate = in2Days;
+                            validationError = null;
+                          }),
+                        ),
+                        _buildQuickDayChip(
+                          '+3 Days (${DateFormat('E').format(in3Days)})',
+                          selectedFupDate != null &&
+                              selectedFupDate!.year == in3Days.year &&
+                              selectedFupDate!.month == in3Days.month &&
+                              selectedFupDate!.day == in3Days.day,
+                          () => setLocalState(() {
+                            selectedFupDate = in3Days;
+                            validationError = null;
+                          }),
+                        ),
+                        _buildQuickDayChip(
+                          '+1 Week',
+                          selectedFupDate != null &&
+                              selectedFupDate!.year == in1Week.year &&
+                              selectedFupDate!.month == in1Week.month &&
+                              selectedFupDate!.day == in1Week.day,
+                          () => setLocalState(() {
+                            selectedFupDate = in1Week;
+                            validationError = null;
+                          }),
+                        ),
+                        _buildQuickDayChip(
+                          'Custom Date 📅',
+                          selectedFupDate != null &&
+                              selectedFupDate!.day != tomorrow.day &&
+                              selectedFupDate!.day != in2Days.day &&
+                              selectedFupDate!.day != in3Days.day &&
+                              selectedFupDate!.day != in1Week.day,
+                          () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedFupDate ?? tomorrow,
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(const Duration(days: 90)),
+                              helpText: 'SELECT FOLLOW-UP DATE & DAY',
+                            );
+                            if (picked != null) {
+                              setLocalState(() {
+                                selectedFupDate = picked;
+                                validationError = null;
+                              });
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _buildQuickTimeChip(
+                          'Morning (10:30 AM)',
+                          selectedFupTime?.hour == 10 && selectedFupTime?.minute == 30,
+                          () => setLocalState(() => selectedFupTime = const TimeOfDay(hour: 10, minute: 30)),
+                        ),
+                        _buildQuickTimeChip(
+                          'Afternoon (02:30 PM)',
+                          selectedFupTime?.hour == 14 && selectedFupTime?.minute == 30,
+                          () => setLocalState(() => selectedFupTime = const TimeOfDay(hour: 14, minute: 30)),
+                        ),
+                        _buildQuickTimeChip(
+                          'Evening (05:00 PM)',
+                          selectedFupTime?.hour == 17 && selectedFupTime?.minute == 0,
+                          () => setLocalState(() => selectedFupTime = const TimeOfDay(hour: 17, minute: 0)),
+                        ),
+                        _buildQuickTimeChip(
+                          'Custom Time ⏰',
+                          selectedFupTime != null &&
+                              !(selectedFupTime?.hour == 10 && selectedFupTime?.minute == 30) &&
+                              !(selectedFupTime?.hour == 14 && selectedFupTime?.minute == 30) &&
+                              !(selectedFupTime?.hour == 17 && selectedFupTime?.minute == 0),
+                          () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: selectedFupTime ?? const TimeOfDay(hour: 10, minute: 30),
+                            );
+                            if (picked != null) {
+                              setLocalState(() => selectedFupTime = picked);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    if (selectedFupDate != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.deepPurple.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.deepPurple.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.alarm_on_rounded, color: Colors.deepPurple, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Scheduled: ${DateFormat('dd MMM yyyy (EEEE)').format(selectedFupDate!)}${selectedFupTime != null ? ' at ${selectedFupTime!.format(context)}' : ''}',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.deepPurple),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 14),
+                  ] else ...[
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setLocalState(() {
+                          selectedFupDate = tomorrow;
+                          selectedFupTime = const TimeOfDay(hour: 10, minute: 30);
+                        });
+                      },
+                      icon: const Icon(Icons.event_note_rounded, size: 16),
+                      label: const Text('Add Next Follow-up Date (Optional)', style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF1E3A5F),
+                        side: BorderSide(color: const Color(0xFF1E3A5F).withOpacity(0.3)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+
+                  // 3. Discussion Summary & Notes
                   const Text('CALL SUMMARY / NOTES', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
                   const SizedBox(height: 6),
                   TextField(
                     controller: notesCtrl,
+                    maxLines: 3,
                     decoration: InputDecoration(
-                      hintText: 'e.g. Discussed course details, asked to call back tomorrow...',
+                      hintText: 'Discussed requirements, customer questions, next steps...',
                       hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 12),
                       prefixIcon: const Icon(Icons.notes_rounded, size: 20),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     ),
-                    maxLines: 2,
                   ),
                   const SizedBox(height: 20),
 
-                  // Save Log Button
+                  // 4. Save Button
                   SizedBox(
                     width: double.infinity,
                     height: 48,
                     child: ElevatedButton(
-                      onPressed: isSubmitting ? null : () async {
-                        setLocalState(() => isSubmitting = true);
+                      onPressed: isSubmitting
+                          ? null
+                          : () async {
+                              if (requiresFollowUp && selectedFupDate == null) {
+                                setLocalState(() {
+                                  validationError = '⚠️ "$selectedOutcome" requires a follow-up date & time. Please select one above.';
+                                });
+                                return;
+                              }
 
-                        final fDateStr = selectedFupDate != null
-                            ? DateFormat('yyyy-MM-dd').format(selectedFupDate!)
-                            : null;
+                              setLocalState(() {
+                                isSubmitting = true;
+                                validationError = null;
+                              });
 
-                        final req = {
-                          'lead_id': leadId,
-                          'call_status': callStatus,
-                          'notes': notesCtrl.text.trim(),
-                          if (fDateStr != null) 'follow_up_date': fDateStr,
-                        };
+                              final fDateStr = selectedFupDate != null
+                                  ? DateFormat('yyyy-MM-dd').format(selectedFupDate!)
+                                  : null;
+                              final fTimeStr = (selectedFupDate != null && selectedFupTime != null)
+                                  ? selectedFupTime!.format(context)
+                                  : null;
 
-                        final res = await ApiService().post('telecaller/call-log', req);
-                        setLocalState(() => isSubmitting = false);
+                              final req = {
+                                'lead_id': leadId,
+                                'call_status': selectedOutcome,
+                                'call_outcome': selectedOutcome,
+                                'notes': notesCtrl.text.trim(),
+                                if (fDateStr != null) 'follow_up_date': fDateStr,
+                                if (fTimeStr != null) 'follow_up_time': fTimeStr,
+                              };
 
-                        if (mounted) {
-                          Navigator.pop(context);
-                          _fetch();
+                              final scaffoldMessenger = ScaffoldMessenger.of(context);
+                              final navigator = Navigator.of(context);
+                              final res = await ApiService().post('telecaller/call-feedback', req);
+                              setLocalState(() => isSubmitting = false);
 
-                          if (res['success'] == true) {
-                            final msg = fDateStr != null
-                                ? '✅ Call logged & follow-up scheduled for ${DateFormat('dd MMM (EEEE)').format(selectedFupDate!)}!'
-                                : '✅ Call log saved for $name!';
+                              if (mounted) {
+                                navigator.pop();
+                                _fetch();
 
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(msg),
-                                backgroundColor: Colors.green,
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(res['message'] ?? 'Failed to save call log'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        }
-                      },
+                                if (res['success'] == true) {
+                                  final msg = fDateStr != null
+                                      ? '✅ Feedback saved! Next follow-up: ${DateFormat('dd MMM (EEEE)').format(selectedFupDate!)}'
+                                      : '✅ Feedback "$selectedOutcome" saved for $name!';
+
+                                  scaffoldMessenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text(msg),
+                                      backgroundColor: Colors.green,
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                } else {
+                                  scaffoldMessenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text(res['message'] ?? 'Failed to save feedback'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF1E3A5F),
                         foregroundColor: Colors.white,
@@ -2168,9 +2668,9 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
                           : const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.save_rounded, size: 18),
+                                Icon(Icons.check_circle_rounded, size: 18),
                                 SizedBox(width: 8),
-                                Text('Save Call Log & Follow-up', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                Text('Save Call Feedback', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                               ],
                             ),
                     ),
@@ -2180,6 +2680,34 @@ class _TelecallerScreenState extends State<TelecallerScreen> with SingleTickerPr
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildQuickTimeChip(String label, bool isSelected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF1E3A5F).withOpacity(0.12) : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey.shade300,
+            width: isSelected ? 1.5 : 0.8,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10.5,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey.shade800,
+          ),
+        ),
       ),
     );
   }

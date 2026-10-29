@@ -19,7 +19,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
   bool _loadingLeads = false;
   bool _loading = true;
   String? _error;
-  String _callStatus = 'No Answer';
+  String _callStatus = 'Connected — Interested';
   DateTime? _followUpDate;
   DateTime? _selectedDate; // Null means all dates
   late Map<String, dynamic> _leadData;
@@ -448,27 +448,30 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
     }
 
     try {
-      await ApiService().post('call_reports/create', {
+      final fDateStr = _followUpDate != null ? _followUpDate!.toIso8601String().split('T')[0] : null;
+      final res = await ApiService().post('telecaller/call-feedback', {
         'lead_id': leadId,
         'call_status': _callStatus,
+        'call_outcome': _callStatus,
         'notes': '',
+        if (fDateStr != null) 'follow_up_date': fDateStr,
       });
-      if (_followUpDate != null) {
-        await ApiService().post('follow_ups/create', {
-          'lead_id': leadId,
-          'follow_up_date': _followUpDate!.toIso8601String().split('T')[0],
-          'notes': '',
-        });
-      }
+
       _fetchHistory();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Call logged successfully'), backgroundColor: Colors.green),
-        );
-        setState(() {
-          _followUpDate = null;
-          _callStatus = 'No Answer';
-        });
+        if (res['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ Call feedback saved successfully'), backgroundColor: Colors.green),
+          );
+          setState(() {
+            _followUpDate = null;
+            _callStatus = 'Connected — Interested';
+          });
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(res['message'] ?? 'Failed to save call feedback'), backgroundColor: Colors.red),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -1692,13 +1695,17 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with SingleTickerPr
           DropdownButtonFormField<String>(
             value: _callStatus,
             items: [
+              'Connected — Interested',
+              'Connected — Not Interested',
               'No Answer',
-              'Connected',
               'Busy',
               'Switched Off',
-              'Interested',
-              'Not Interested',
-              'Converted'
+              'Invalid Number',
+              'Call Back Required',
+              'Follow-up Scheduled',
+              'Meeting Requested',
+              'Converted / Successful',
+              'Other'
             ].map((s) => DropdownMenuItem(
               value: s,
               child: Text(s),
